@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Builds public/demo/demo.zip from the phrases below using espeak-ng + ffmpeg.
+# Builds apps/player/public/demo/demo.zip from the phrases below using espeak-ng + ffmpeg.
 # Only needed to regenerate the demo pack; the result is committed to the repo.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/audio" public/demo
+mkdir -p "$tmp/audio" apps/player/public/demo
 
 phrases=(
   "Guten Morgen!|Good morning!"
@@ -35,7 +35,7 @@ cat > "$tmp/pack.json" <<JSON
 { "id": "demo-de-en", "title": "Demo: German (espeak)", "lang": { "target": "de", "native": "en" } }
 JSON
 
-rm -f public/demo/demo.zip
-(cd "$tmp" && zip -q -0 -r "$OLDPWD/public/demo/demo.zip" pack.json phrases.csv audio)
-echo "public/demo/demo.zip:"
-unzip -l public/demo/demo.zip
+rm -f apps/player/public/demo/demo.zip
+(cd "$tmp" && zip -q -0 -r "$OLDPWD/apps/player/public/demo/demo.zip" pack.json phrases.csv audio)
+echo "apps/player/public/demo/demo.zip:"
+unzip -l apps/player/public/demo/demo.zip

@@ -1,29 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import { execSync } from 'node:child_process'
-
-// BASE_PATH is set in CI: "/lang-train/" for main, "/lang-train/preview/<branch>/" for other branches.
-const base = process.env.BASE_PATH ?? '/'
-const isPreview = base.includes('/preview/')
-
-function commit(): string {
-  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7)
-  try {
-    return execSync('git rev-parse --short HEAD').toString().trim()
-  } catch {
-    return 'local'
-  }
-}
+import { buildDefines, isPreview, siteBase } from '../../vite.shared'
 
 export default defineConfig({
-  base,
-  define: {
-    __APP_VERSION__: JSON.stringify(process.env.npm_package_version ?? '0.0.0'),
-    __COMMIT__: JSON.stringify(commit()),
-    __BRANCH__: JSON.stringify(process.env.GITHUB_REF_NAME ?? 'local'),
-    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
-  },
+  base: siteBase,
+  define: buildDefines,
   plugins: [
     react(),
     VitePWA({
@@ -47,8 +29,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,zip}'],
-        // The main site must not intercept navigation into branch previews.
-        navigateFallbackDenylist: [/\/preview\//],
+        // The player's service worker must not serve its page for the editor
+        // or (on the main site) for branch previews.
+        navigateFallbackDenylist: [/\/editor(\/|$)/, ...(isPreview ? [] : [/\/preview\//])],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
       },
     }),

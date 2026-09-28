@@ -1,0 +1,19 @@
+{
+  "name": "@lang-train/pack",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "papaparse": "^5.7.0"
+  },
+  "devDependencies": {
+    "@types/papaparse": "^5.5.2"
+  }
+}

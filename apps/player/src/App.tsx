@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { Player, type Settings } from './engine/Player'
-import { loadPack, type Pack } from './pack/loadPack'
+import { loadPack, type Pack } from '@lang-train/pack'
 import { PlayerView } from './PlayerView'
 import { loadOverrides, loadSettings, saveSettings } from './storage'
 
@@ -112,6 +112,9 @@ export default function App() {
           <input ref={fileInput} type="file" accept=".zip,application/zip" hidden onChange={onFile} />
           {busy && <p className="muted">Loading…</p>}
           {error && <p className="error">{error}</p>}
+          <p className="muted small">
+            Make your own pack in the <a href={`${import.meta.env.BASE_URL}editor/`}>editor</a> (desktop).
+          </p>
           <details className="help">
             <summary>Pack format (provisional)</summary>
             <p>

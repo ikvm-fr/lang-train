@@ -1,0 +1,17 @@
+{
+  "name": "@lang-train/player",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p . && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@lang-train/pack": "*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}

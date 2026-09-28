@@ -1,4 +1,4 @@
-import type { Pack } from '../pack/loadPack'
+import type { Pack } from '@lang-train/pack'
 
 // Playback engine. Independent of React.
 //
