@@ -10,8 +10,12 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "@lang-train/pack": "*",
+    "konva": "^9.3.22",
+    "peaks.js": "^4.0.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "waveform-data": "^4.5.2"
   }
 }

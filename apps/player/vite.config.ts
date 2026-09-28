@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import { buildDefines, isPreview, siteBase } from '../../vite.shared'
+import { buildDefines, isPreview, siteBase } from '../../vite.shared.ts'
 
 export default defineConfig({
   base: siteBase,

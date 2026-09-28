@@ -4,7 +4,9 @@
 into a [pack](pack-format.md): mark phrases as regions on a waveform, fill in the text fields,
 and export a ZIP with one MP3 clip per phrase. No server: everything runs in the browser.
 
-Status: **draft plan** for the first version (MVP).
+Status: first iteration implemented (open audio, waveform and regions, shortcuts, field model, table,
+MP3/ZIP export). Second iteration: silence detection, append to an existing pack, autosave, project file,
+Audacity labels.
 
 ## Scope
 

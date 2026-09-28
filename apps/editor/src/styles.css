@@ -1,52 +1,326 @@
 :root {
   --bg: #f6f7f9;
+  --card: #ffffff;
   --text: #15181d;
   --muted: #677080;
   --accent: #1f6feb;
+  --accent-text: #ffffff;
+  --border: #dde1e7;
+  --sel: #16a34a;
+  --warn: #b45309;
+  --error: #c62828;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #111418;
+    --card: #1b1f25;
     --text: #e8eaee;
     --muted: #9099a6;
     --accent: #3b82f6;
+    --border: #2c323a;
+    --sel: #22c55e;
+    --warn: #f59e0b;
+    --error: #ef5350;
     color-scheme: dark;
   }
+}
+
+* {
+  box-sizing: border-box;
 }
 html,
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 a {
   color: var(--accent);
 }
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+button {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+button.icon {
+  border: none;
+  background: transparent;
+  padding: 2px 6px;
+  color: var(--muted);
+}
+button.icon:hover:not(:disabled) {
+  color: var(--text);
+}
+button.link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+}
+input[type='text'],
+input:not([type]),
+input[type='number'],
+select,
+textarea {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+kbd {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 12px;
+}
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 12px;
+}
+.error {
+  color: var(--error);
+}
+.warning,
+.notice {
+  color: var(--warn);
+}
+.spacer {
+  flex: 1;
+}
+
 .app {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 12px 16px;
+  padding: 12px 20px;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  gap: 8px;
 }
 .top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 .top h1 {
-  font-size: 20px;
-  margin: 4px 0;
+  font-size: 18px;
+  margin: 4px 12px 4px 0;
 }
-.muted {
-  color: var(--muted);
+.start {
+  padding: 40px 0;
+  max-width: 620px;
 }
 footer {
   margin-top: auto;
   padding-top: 24px;
   font-size: 12px;
   text-align: center;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.transport .play {
+  width: 44px;
+  font-size: 16px;
+}
+.clock {
+  font-variant-numeric: tabular-nums;
+  min-width: 170px;
+}
+.mark {
+  color: #e11d48;
+  font-weight: 600;
+}
+.shortcuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2px 24px;
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.shortcuts div {
+  display: flex;
+  gap: 8px;
+}
+.shortcuts dt {
+  font-weight: 600;
+  min-width: 150px;
+}
+.shortcuts dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+.waveform {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.zoomview {
+  height: 200px;
+}
+.overview {
+  height: 60px;
+  border-top: 1px solid var(--border);
+}
+
+.empty {
+  padding: 16px 0;
+}
+.regions {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.regions th {
+  text-align: left;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  z-index: 1;
+}
+.regions td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.regions tr.selected td {
+  background: color-mix(in srgb, var(--sel) 12%, transparent);
+}
+.regions tr.selected td.num {
+  box-shadow: inset 3px 0 0 var(--sel);
+}
+.regions tr.missing td.num {
+  color: var(--warn);
+}
+.regions .num {
+  width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.regions .time {
+  width: 90px;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.regions .clickable {
+  cursor: pointer;
+}
+.regions .actions {
+  width: 32px;
+}
+.regions input,
+.regions textarea {
+  width: 100%;
+  min-width: 120px;
+}
+.regions textarea {
+  resize: vertical;
+  field-sizing: content;
+  min-height: 30px;
+}
+
+.dialog {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  padding: 16px 20px;
+  min-width: 420px;
+  max-width: 900px;
+}
+.dialog::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+.dialog h2 {
+  margin: 0 0 12px;
+  font-size: 17px;
+}
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.form {
+  display: grid;
+  gap: 10px;
+}
+.form label {
+  display: grid;
+  gap: 4px;
+}
+.fields {
+  border-collapse: collapse;
+}
+.fields th {
+  text-align: left;
+  padding: 4px 6px;
+  font-weight: 600;
+}
+.fields td {
+  padding: 3px 6px;
+}
+.row-actions {
+  white-space: nowrap;
+}
+.add-field {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.add-field input {
+  flex: 1;
+}
+.export-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
 }
