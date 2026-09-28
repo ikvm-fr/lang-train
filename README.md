@@ -6,6 +6,11 @@ Runs entirely in the frontend (PWA), including with the screen off.
 - Site: https://ikvm-fr.github.io/lang-train/
 - Branch previews: `https://ikvm-fr.github.io/lang-train/preview/<branch>/` (`/` in a branch name becomes `-`)
 
+## Documentation
+
+- [Pack format v1](docs/pack-format.md): the contract between the editor and the player
+- [Editor](docs/editor.md): plan for the markup editor
+
 ## Development
 
 ```bash
