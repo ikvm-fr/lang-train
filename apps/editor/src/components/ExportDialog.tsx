@@ -1,6 +1,6 @@
-import { primaryField } from '@lang-train/pack'
-import { useState } from 'react'
-import { buildPack, downloadBytes, safeFileName, type ExportOptions } from '../export/buildPack'
+import { primaryField, readPack, type Pack } from '@lang-train/pack'
+import { useRef, useState } from 'react'
+import { appendToPack, buildPack, downloadBytes, safeFileName, type ExportOptions } from '../export/buildPack'
 import { store } from '../state/store'
 import { Dialog } from './Dialog'
 
@@ -21,12 +21,26 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
     ...loadPrefs(),
     title: project.audio?.name.replace(/\.[^.]+$/, '') ?? '',
   }))
+  const [mode, setMode] = useState<'new' | 'append'>('new')
+  const [target, setTarget] = useState<{ pack: Pack; fileName: string } | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<[number, number] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const set = (patch: Partial<ExportOptions>) => setOpts((o) => ({ ...o, ...patch }))
 
   const primary = primaryField(project.fields)
   const emptyCount = primary ? project.regions.filter((r) => !r.values[primary.key]?.trim()).length : 0
+
+  const pickPack = async (file: File) => {
+    setError(null)
+    try {
+      const { warnings: _w, ...pack } = await readPack(new Uint8Array(await file.arrayBuffer()), file.name)
+      setTarget({ pack, fileName: file.name })
+    } catch (e) {
+      setTarget(null)
+      setError(`${file.name}: ${(e as Error).message}`)
+    }
+  }
 
   const run = async () => {
     setError(null)
@@ -38,8 +52,14 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
       /* storage unavailable */
     }
     try {
-      const zip = await buildPack(store.getState(), buffer, opts, (done, total) => setProgress([done, total]))
-      downloadBytes(zip, safeFileName(opts.title))
+      const onProgress = (done: number, total: number) => setProgress([done, total])
+      if (mode === 'append' && target) {
+        const zip = await appendToPack(target.pack, store.getState(), buffer, opts, onProgress)
+        downloadBytes(zip, target.fileName)
+      } else {
+        const zip = await buildPack(store.getState(), buffer, opts, onProgress)
+        downloadBytes(zip, safeFileName(opts.title))
+      }
       onClose()
     } catch (e) {
       setError((e as Error).message)
@@ -50,32 +70,76 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
   const busy = progress !== null
   return (
     <Dialog
-      title="Export pack"
+      title="Export"
       onClose={() => !busy && onClose()}
       footer={
         <>
           <button onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button className="primary" onClick={() => void run()} disabled={busy || !project.regions.length}>
-            Export {project.regions.length} phrases
+          <button
+            className="primary"
+            onClick={() => void run()}
+            disabled={busy || !project.regions.length || (mode === 'append' && !target)}
+          >
+            {mode === 'append' ? `Append ${project.regions.length} phrases` : `Export ${project.regions.length} phrases`}
           </button>
         </>
       }
     >
       <div className="form">
-        <label>
-          Title
-          <input value={opts.title} onChange={(e) => set({ title: e.target.value })} disabled={busy} />
-        </label>
-        <label>
-          Language being learned
-          <input placeholder="e.g. de" value={opts.target} onChange={(e) => set({ target: e.target.value })} disabled={busy} />
-        </label>
-        <label>
-          Learner's language
-          <input placeholder="e.g. en" value={opts.native} onChange={(e) => set({ native: e.target.value })} disabled={busy} />
-        </label>
+        <div className="radio-row">
+          <label>
+            <input type="radio" checked={mode === 'new'} onChange={() => setMode('new')} disabled={busy} /> New pack
+          </label>
+          <label>
+            <input type="radio" checked={mode === 'append'} onChange={() => setMode('append')} disabled={busy} /> Append to an
+            existing pack
+          </label>
+        </div>
+        {mode === 'append' && (
+          <div className="append-target">
+            <button onClick={() => fileInput.current?.click()} disabled={busy}>
+              Choose pack ZIP…
+            </button>{' '}
+            {target ? (
+              <span>
+                {target.fileName}: “{target.pack.meta.title}”, {target.pack.phrases.length} phrases
+              </span>
+            ) : (
+              <span className="muted">The result downloads as a new file with the same name.</span>
+            )}
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".zip,application/zip"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                e.target.value = ''
+                if (f) void pickPack(f)
+              }}
+            />
+          </div>
+        )}
+        {mode === 'new' && (
+          <label>
+            Title
+            <input value={opts.title} onChange={(e) => set({ title: e.target.value })} disabled={busy} />
+          </label>
+        )}
+        {mode === 'new' && (
+          <>
+            <label>
+              Language being learned
+              <input placeholder="e.g. de" value={opts.target} onChange={(e) => set({ target: e.target.value })} disabled={busy} />
+            </label>
+            <label>
+              Learner's language
+              <input placeholder="e.g. en" value={opts.native} onChange={(e) => set({ native: e.target.value })} disabled={busy} />
+            </label>
+          </>
+        )}
         <label>
           Padding around each phrase, ms
           <input

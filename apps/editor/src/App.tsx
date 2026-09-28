@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { primaryField } from '@lang-train/pack'
 import { LONG_FILE_SECONDS, decodeFile } from './audio/decode'
+import { DetectPanel } from './components/DetectPanel'
 import { ExportDialog } from './components/ExportDialog'
 import { FieldsDialog } from './components/FieldsDialog'
 import { RegionTable } from './components/RegionTable'
 import { Waveform, type WaveformHandle } from './components/Waveform'
 import { formatTime } from './format'
+import { downloadBytes } from './export/buildPack'
+import { loadSavedProject, saveProject } from './state/persist'
+import { formatAudacityLabels, parseAudacityLabels, parseProjectFile, toProjectFile, type ProjectFile } from './state/projectFile'
 import { store, useProject, type Region } from './state/store'
 
 const SHORTCUTS: [string, string][] = [
@@ -46,6 +51,11 @@ export default function App() {
   const [dialog, setDialog] = useState<'fields' | 'export' | null>(null)
   const [markIn, setMarkIn] = useState<number | null>(null)
   const [showHelp, setShowHelp] = useState(false)
+  const [detecting, setDetecting] = useState(false)
+  const [saved, setSaved] = useState<ProjectFile | null>(null) // last project, shown on the start screen
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
+  const projectInput = useRef<HTMLInputElement>(null)
+  const labelsInput = useRef<HTMLInputElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   usePlayerTick(handle)
   useProject((s) => s) // re-render on any change (undo/redo button state)
@@ -59,7 +69,21 @@ export default function App() {
       const decoded = await decodeFile(file)
       setBuffer(null)
       setMarkIn(null)
-      store.newProject({ name: file.name, size: file.size, duration: decoded.duration })
+      setDetecting(false)
+      const info = { name: file.name, size: file.size, duration: decoded.duration }
+      const saved = await loadSavedProject(info)
+      if (
+        saved?.regions.length &&
+        confirm(`Continue your last project for ${file.name} (${saved.regions.length} regions)?`)
+      ) {
+        store.loadProject({ ...saved, audio: info })
+        if (Math.abs(saved.audio.duration - decoded.duration) > 0.05) {
+          setNotice('The file length differs from the saved project; check the region positions.')
+        }
+      } else {
+        store.newProject(info)
+      }
+      setSaved(null)
       setBuffer(decoded)
       if (decoded.duration > LONG_FILE_SECONDS) {
         setNotice(`This recording is ${formatTime(decoded.duration)} long. Very long files use a lot of memory; consider splitting it.`)
@@ -103,6 +127,7 @@ export default function App() {
     const { player, peaks } = handle
     const onKey = (e: KeyboardEvent) => {
       if (dialog) return
+      if (e.target instanceof HTMLElement && e.target.closest('.menu, .detect')) return
       const inText = isTextTarget(e.target)
       const sel = store.selected()
       const ctrl = e.ctrlKey || e.metaKey
@@ -195,14 +220,83 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [handle, dialog, markIn, playRegion])
 
-  // Warn before losing unsaved work (autosave comes in the next iteration).
+  // Offer the last project on the start screen.
   useEffect(() => {
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (store.getState().regions.length) e.preventDefault()
-    }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+    void loadSavedProject().then((p) => p?.regions.length && setSaved(p))
   }, [])
+
+  // Autosave to IndexedDB, 1 s after the last change and when the page is hidden.
+  useEffect(() => {
+    let timer = 0
+    const flush = () => {
+      clearTimeout(timer)
+      const p = toProjectFile(store.getState())
+      if (!p) return
+      saveProject(p)
+        .then(() => setSavedAt(new Date()))
+        .catch(() => setNotice('Autosave failed: the browser refused to store data.'))
+    }
+    const unsubscribe = store.subscribe(() => {
+      clearTimeout(timer)
+      timer = window.setTimeout(flush, 1000)
+    })
+    const onHide = () => document.visibilityState === 'hidden' && flush()
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', flush)
+    return () => {
+      unsubscribe()
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', flush)
+    }
+  }, [])
+
+  const saveProjectFile = () => {
+    const p = toProjectFile(store.getState())
+    if (!p) return
+    const bytes = new TextEncoder().encode(JSON.stringify(p, null, 2))
+    downloadBytes(bytes, `${p.audio.name.replace(/\.[^.]+$/, '')}.project.json`, 'application/json')
+  }
+
+  const openProjectFile = async (file: File) => {
+    try {
+      const p = parseProjectFile(JSON.parse(await file.text()))
+      const current = store.getState().audio
+      if (!current || !buffer) {
+        // Remember it; it is restored when the matching audio is opened.
+        await saveProject(p)
+        setSaved(p)
+        setNotice(`Project loaded. Now open its audio file: ${p.audio.name}`)
+        return
+      }
+      if (current.name !== p.audio.name && !confirm(`This project was made for ${p.audio.name}, not ${current.name}. Load it anyway?`)) {
+        return
+      }
+      if (store.getState().regions.length && !confirm('Replace the current regions with the project file?')) return
+      store.loadProject({ ...p, audio: current })
+    } catch (e) {
+      setError(`${file.name}: ${e instanceof SyntaxError ? 'not a JSON file' : (e as Error).message}`)
+    }
+  }
+
+  const importLabels = async (file: File) => {
+    try {
+      const labels = parseAudacityLabels(await file.text())
+      const key = primaryField(store.getState().fields)?.key
+      const { added, skipped } = store.addRegions(
+        labels.map((l) => ({ start: l.start, end: l.end, values: key && l.label ? { [key]: l.label } : {} })),
+      )
+      setNotice(`Imported ${added} regions${skipped ? `, skipped ${skipped} (overlapping or too short)` : ''}.`)
+    } catch (e) {
+      setError(`${file.name}: ${(e as Error).message}`)
+    }
+  }
+
+  const exportLabels = () => {
+    const { regions, fields, audio } = store.getState()
+    const text = formatAudacityLabels(regions, primaryField(fields)?.key)
+    downloadBytes(new TextEncoder().encode(text), `${(audio?.name ?? 'labels').replace(/\.[^.]+$/, '')}.labels.txt`, 'text/plain')
+  }
 
   // Drag & drop an audio file anywhere on the page.
   useEffect(() => {
@@ -230,19 +324,61 @@ export default function App() {
         {audio && (
           <span className="file muted">
             {audio.name} · {formatTime(audio.duration)} · {regionCount} regions
+            {savedAt && ` · saved ${savedAt.toLocaleTimeString('en-GB')}`}
           </span>
         )}
         <div className="spacer" />
         <button onClick={() => fileInput.current?.click()} disabled={!!busy}>
           Open audio
         </button>
+        <button onClick={() => setDetecting((v) => !v)} disabled={!handle} className={detecting ? 'active' : ''}>
+          Detect pauses
+        </button>
         <button onClick={() => setDialog('fields')}>Fields</button>
+        <details className="menu">
+          <summary>Project</summary>
+          <div className="menu-items" onClick={(e) => ((e.currentTarget.parentElement as HTMLDetailsElement).open = false)}>
+            <button onClick={saveProjectFile} disabled={!audio}>
+              Save project file…
+            </button>
+            <button onClick={() => projectInput.current?.click()}>Open project file…</button>
+            <hr />
+            <button onClick={() => labelsInput.current?.click()} disabled={!buffer}>
+              Import Audacity labels…
+            </button>
+            <button onClick={exportLabels} disabled={!regionCount}>
+              Export Audacity labels…
+            </button>
+          </div>
+        </details>
         <button className="primary" onClick={() => setDialog('export')} disabled={!buffer || !regionCount}>
           Export
         </button>
         <a href="../" className="small">
           Player
         </a>
+        <input
+          ref={projectInput}
+          type="file"
+          accept=".json,application/json"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            e.target.value = ''
+            if (f) void openProjectFile(f)
+          }}
+        />
+        <input
+          ref={labelsInput}
+          type="file"
+          accept=".txt,text/plain"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            e.target.value = ''
+            if (f) void importLabels(f)
+          }}
+        />
         <input
           ref={fileInput}
           type="file"
@@ -276,6 +412,12 @@ export default function App() {
           <button className="primary" onClick={() => fileInput.current?.click()}>
             Open audio
           </button>
+          {saved && (
+            <p className="last-project">
+              Last project: <strong>{saved.audio.name}</strong>, {saved.regions.length} regions
+              {saved.savedAt && `, saved ${new Date(saved.savedAt).toLocaleString('en-GB')}`}. Open the same file to continue.
+            </p>
+          )}
         </main>
       )}
 
@@ -315,6 +457,9 @@ export default function App() {
                 </div>
               ))}
             </dl>
+          )}
+          {detecting && handle && (
+            <DetectPanel buffer={buffer} handle={handle} onClose={() => setDetecting(false)} onDone={setNotice} />
           )}
           <Waveform buffer={buffer} onReady={setHandle} />
           <RegionTable onPlay={(r) => playRegion(r)} />

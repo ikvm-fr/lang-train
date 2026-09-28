@@ -68,3 +68,25 @@ describe('ProjectStore', () => {
     expect(s.getState().selectedId).toBe('p0001')
   })
 })
+
+describe('ProjectStore.addRegions', () => {
+  it('adds in one undo step and skips overlaps', () => {
+    s.addRegion(2, 3)
+    const r = s.addRegions([
+      { start: 0, end: 1, values: { text: 'a' } },
+      { start: 2.5, end: 4 },
+      { start: 5, end: 6 },
+      { start: 5.5, end: 7 },
+      { start: 19.95, end: 25 }, // clamped to 0.05 s: too short
+    ])
+    expect(r).toEqual({ added: 2, skipped: 3 })
+    expect(regions()).toEqual([
+      ['p0002', 0, 1],
+      ['p0001', 2, 3],
+      ['p0003', 5, 6],
+    ])
+    expect(s.getState().regions[0].values).toEqual({ text: 'a' })
+    s.undo()
+    expect(regions()).toEqual([['p0001', 2, 3]])
+  })
+})

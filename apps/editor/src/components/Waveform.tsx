@@ -11,6 +11,8 @@ export interface WaveformHandle {
   player: WebAudioPlayer
 }
 
+export const PREVIEW_PREFIX = 'preview-'
+
 // Samples per pixel at 24 kHz: 64 ≈ 2.7 ms per pixel … 8192 ≈ 0.34 s per pixel.
 const ZOOM_LEVELS = [64, 128, 256, 512, 1024, 2048, 4096, 8192]
 
@@ -24,7 +26,9 @@ function palette() {
 function syncSegments(peaks: PeaksInstance, s: ProjectState) {
   const colors = palette()
   const wanted = new Map(s.regions.map((r, i) => [r.id, { r, i }]))
-  for (const seg of peaks.segments.getSegments()) {
+  // Copy first: removeById mutates the array getSegments() returns.
+  for (const seg of [...peaks.segments.getSegments()]) {
+    if (seg.id?.startsWith(PREVIEW_PREFIX)) continue // owned by the detection preview
     if (!seg.id || !wanted.has(seg.id)) peaks.segments.removeById(seg.id!)
   }
   for (const [id, { r, i }] of wanted) {

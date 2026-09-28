@@ -4,9 +4,7 @@
 into a [pack](pack-format.md): mark phrases as regions on a waveform, fill in the text fields,
 and export a ZIP with one MP3 clip per phrase. No server: everything runs in the browser.
 
-Status: first iteration implemented (open audio, waveform and regions, shortcuts, field model, table,
-MP3/ZIP export). Second iteration: silence detection, append to an existing pack, autosave, project file,
-Audacity labels.
+Status: MVP implemented (both iterations).
 
 ## Scope
 
@@ -117,7 +115,7 @@ Parameters (sliders; the proposal is redrawn live on the waveform before it is a
 | `minPhrase` | 300 ms | 100…2000 ms |
 | `padding` | 100 ms | 0…500 ms |
 
-- Scope: the whole file, or only the current selection on the waveform.
+- Scope: the whole file, or only the part currently visible in the zoomed waveform.
 - Existing regions are never modified. Proposed regions that would overlap an existing region are skipped.
 - The run can be undone with `Ctrl+Z`.
 - Works best on clean speech (textbook audio, TTS, audiobooks). With background music or fast
@@ -128,8 +126,9 @@ Parameters (sliders; the proposal is redrawn live on the waveform before it is a
 - Opened from the **Fields** button. Lists fields with key, label, role, multiline, display.
 - Default model for a new project: `text` (Original, primary), `transcription`, `translation`
   (role translation), `notes` (multiline).
-- Fields can be added, renamed (label), reordered and removed. Removing a field that has values asks for confirmation.
+- Fields can be added, renamed (label), reordered and removed.
 - Keys are generated from the label on creation and are then fixed.
+- Removing a field that has values asks for confirmation; the values stay in the regions (and come back if the field is re-added with the same key) but are not exported.
 - The last used model is remembered and offered for new projects.
 
 ## Audio pipeline
@@ -157,29 +156,35 @@ target/native language codes.
 
 ## Persistence
 
-- **Autosave** to IndexedDB, debounced (1 s after the last change): regions, field values, field model,
-  settings, and the recording's name, size and duration.
-- The audio itself is not stored in the MVP. On reopening, the editor offers to restore the last
-  project and asks to select the same file again (matched by name + size + duration; a mismatch warns but
-  still allows loading).
-- **Project file**: export/import the project as JSON (everything except audio), for backup or moving between machines:
+- **Autosave** to IndexedDB, 1 s after the last change and when the page is hidden: regions, field values,
+  field model, pack id and the recording's name, size and duration. The header shows the time of the last save.
+- One saved project **per recording** (keyed by file name + size), so opening another file never overwrites
+  earlier work. The start screen shows the most recently saved project.
+- The audio itself is not stored. Opening a recording that has a saved project offers to continue it;
+  a different duration shows a warning.
+- **Project file**: *Project ▾ → Save / Open project file* exports or imports everything except the audio,
+  for backup or moving between machines. Opening a project file before any audio remembers it, and it is
+  offered when the matching recording is opened.
 
 ```json
 {
   "format": "lang-train-project",
   "version": 1,
+  "packId": "3f1c2a9e-…",
   "audio": { "name": "unit3.mp3", "size": 6502211, "duration": 812.35 },
   "fields": [ { "key": "text", "label": "Original", "role": "primary" } ],
   "regions": [
-    { "id": "p0001", "start": 12.34, "end": 13.42, "values": { "text": "Guten Morgen!" }, "pause": null, "repeats": null }
+    { "id": "p0001", "start": 12.34, "end": 13.42, "values": { "text": "Guten Morgen!" } }
   ],
-  "settings": { "padding": 0.1, "bitrate": 64 }
+  "nextId": 2,
+  "savedAt": "2026-09-29T10:00:00Z"
 }
 ```
 
 ## Interoperability
 
-- **Import Audacity labels** (`start<TAB>end<TAB>label`): creates regions, the label goes into the primary field.
+- **Import Audacity labels** (`start<TAB>end<TAB>label`): creates regions as one undo step, the label goes into the
+  primary field; labels overlapping existing regions are skipped.
 - **Export Audacity labels**, so a project can be continued in Audacity.
 - SRT/VTT import is a later addition.
 

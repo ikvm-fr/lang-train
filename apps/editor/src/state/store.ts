@@ -1,5 +1,6 @@
 import { DEFAULT_FIELDS, type FieldDef } from '@lang-train/pack'
 import { useSyncExternalStore } from 'react'
+import type { ProjectFile } from './projectFile'
 
 // Project state. The store is the source of truth; the waveform mirrors it.
 
@@ -89,6 +90,20 @@ export class ProjectStore {
     this.listeners.forEach((fn) => fn())
   }
 
+  loadProject(p: ProjectFile) {
+    this.past = []
+    this.future = []
+    this.state = {
+      packId: p.packId,
+      audio: p.audio,
+      fields: p.fields,
+      regions: p.regions,
+      nextId: p.nextId,
+      selectedId: null,
+    }
+    this.listeners.forEach((fn) => fn())
+  }
+
   // ----- selection -----
 
   select(id: string | null) {
@@ -137,6 +152,26 @@ export class ProjectStore {
     const region: Region = { id, start, end, values: {} }
     this.set({ regions: sortRegions([...this.state.regions, region]), nextId: this.state.nextId + 1, selectedId: id }, true)
     return id
+  }
+
+  // Adds several regions as one undo step. Regions overlapping existing ones (or each other) are skipped.
+  addRegions(list: { start: number; end: number; values?: Record<string, string> }[]): { added: number; skipped: number } {
+    const duration = this.state.audio?.duration ?? Infinity
+    const regions = [...this.state.regions]
+    let nextId = this.state.nextId
+    let skipped = 0
+    for (const item of [...list].sort((a, b) => a.start - b.start)) {
+      const start = Math.max(0, item.start)
+      const end = Math.min(duration, item.end)
+      if (end - start < MIN_REGION || regions.some((r) => r.start < end && r.end > start)) {
+        skipped++
+        continue
+      }
+      regions.push({ id: this.newId(nextId++), start, end, values: { ...item.values } })
+    }
+    const added = regions.length - this.state.regions.length
+    if (added) this.set({ regions: sortRegions(regions), nextId }, true)
+    return { added, skipped }
   }
 
   // Moves region boundaries, clamped to neighbours and minimum length.
