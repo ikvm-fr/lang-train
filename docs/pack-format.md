@@ -3,8 +3,8 @@
 A **pack** is a single ZIP archive with phrase clips and their texts. The editor (`apps/editor`)
 produces packs; the player (`apps/player`) consumes them. This document is the contract between the two.
 
-Status: **draft**. Until v1 is final, the player also accepts the provisional prototype format
-(`phrases.csv` without `pack.json`), see [Compatibility](#compatibility).
+Status: **draft**, implemented by `packages/pack` and the player. The player also accepts the
+prototype format (`phrases.csv` without `pack.json`), see [Compatibility](#compatibility).
 
 ## Archive layout
 

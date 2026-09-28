@@ -1,15 +1,7 @@
+import type { PackDefaults } from '@lang-train/pack'
 import { defaultSettings, type SegmentOverride, type Settings } from './engine/Player'
 
 // The prototype keeps everything in localStorage. On any access error, run without persistence.
-
-export interface Display {
-  translation: boolean
-  transcription: boolean
-  notes: boolean
-  wakeLock: boolean
-}
-
-export const defaultDisplay: Display = { translation: true, transcription: true, notes: true, wakeLock: false }
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -28,9 +20,28 @@ function write(key: string, value: unknown) {
   }
 }
 
-export const loadSettings = () => read<Settings>('lt:settings', defaultSettings)
-export const saveSettings = (s: Settings) => write('lt:settings', s)
-export const loadDisplay = () => read<Display>('lt:display', defaultDisplay)
+// Only the settings the user has changed are stored, so a pack's `defaults`
+// apply until the user overrides that particular setting.
+const USER_SETTINGS = 'lt:user-settings'
+
+export function effectiveSettings(packDefaults: PackDefaults | undefined): Settings {
+  return { ...defaultSettings, ...packDefaults, ...read<Partial<Settings>>(USER_SETTINGS, {}) }
+}
+
+export function saveUserSettings(patch: Partial<Settings>) {
+  write(USER_SETTINGS, { ...read<Partial<Settings>>(USER_SETTINGS, {}), ...patch })
+}
+
+export interface Display {
+  wakeLock: boolean
+}
+
+export const loadDisplay = () => read<Display>('lt:display', { wakeLock: false })
 export const saveDisplay = (d: Display) => write('lt:display', d)
+
+// Show/hide switches of the pack's fields, by field key.
+export const loadFieldVisibility = (packId: string) => read<Record<string, boolean>>(`lt:fields:${packId}`, {})
+export const saveFieldVisibility = (packId: string, v: Record<string, boolean>) => write(`lt:fields:${packId}`, v)
+
 export const loadOverrides = (packId: string) => read<Record<string, SegmentOverride>>(`lt:overrides:${packId}`, {})
 export const saveOverrides = (packId: string, o: Record<string, SegmentOverride>) => write(`lt:overrides:${packId}`, o)

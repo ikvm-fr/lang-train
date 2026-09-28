@@ -1,4 +1,4 @@
-import type { Pack } from '@lang-train/pack'
+import { primaryField, translationField, type Pack } from '@lang-train/pack'
 
 // Playback engine. Independent of React.
 //
@@ -116,7 +116,7 @@ export class Player {
     this.settings = { ...settings }
     this.overrides = { ...overrides }
     document.addEventListener('visibilitychange', this.onVisibility)
-    this.log(`pack "${pack.title}", phrases: ${pack.segments.length}`)
+    this.log(`pack "${pack.meta.title}", phrases: ${pack.phrases.length}`)
   }
 
   // ---------- subscriptions ----------
@@ -151,7 +151,7 @@ export class Player {
   }
 
   getOverride(seg: number): SegmentOverride {
-    return this.overrides[this.pack.segments[seg].id] ?? {}
+    return this.overrides[this.pack.phrases[seg].id] ?? {}
   }
 
   getOverrides(): Record<string, SegmentOverride> {
@@ -166,7 +166,7 @@ export class Player {
   }
 
   setOverride(seg: number, patch: SegmentOverride) {
-    const id = this.pack.segments[seg].id
+    const id = this.pack.phrases[seg].id
     const next = { ...this.overrides[id], ...patch }
     for (const k of Object.keys(next) as (keyof SegmentOverride)[]) if (next[k] === undefined) delete next[k]
     this.overrides = { ...this.overrides }
@@ -176,12 +176,14 @@ export class Player {
     this.emit()
   }
 
+  // Precedence: the user's own per-phrase value, then the pack's per-phrase value, then the general setting.
   repeatsFor(seg: number): number {
-    return Math.max(1, (this.getOverride(seg).repeats ?? this.settings.repeats) + (this.bonus.get(seg) ?? 0))
+    const base = this.getOverride(seg).repeats ?? this.pack.phrases[seg].repeats ?? this.settings.repeats
+    return Math.max(1, base + (this.bonus.get(seg) ?? 0))
   }
 
   pauseFor(seg: number, duration: number): number {
-    const extra = this.getOverride(seg).pauseExtra ?? this.settings.pauseExtra
+    const extra = this.getOverride(seg).pauseExtra ?? this.pack.phrases[seg].pause ?? this.settings.pauseExtra
     return Math.max(0, duration * this.settings.pauseFactor + extra)
   }
 
@@ -222,7 +224,7 @@ export class Player {
     if (ready) return Promise.resolve(ready)
     let p = this.decoding.get(seg)
     if (!p) {
-      const bytes = this.pack.segments[seg].audio
+      const bytes = this.pack.phrases[seg].audio
       // decodeAudioData detaches the buffer, so pass a copy.
       p = this.ctx!.decodeAudioData(bytes.slice().buffer).then((b) => {
         this.buffers.set(seg, b)
@@ -231,7 +233,7 @@ export class Player {
       })
       p.catch((e) => {
         this.decoding.delete(seg)
-        this.log(`decode error ${this.pack.segments[seg].file}: ${e}`)
+        this.log(`decode error ${this.pack.phrases[seg].file}: ${e}`)
       })
       this.decoding.set(seg, p)
     }
@@ -240,7 +242,7 @@ export class Player {
 
   // Keep only a window around the current phrase in memory.
   private trimBuffers(center: number) {
-    const n = this.pack.segments.length
+    const n = this.pack.phrases.length
     for (const k of this.buffers.keys()) {
       const d = Math.min(Math.abs(k - center), n - Math.abs(k - center))
       if (d > DECODE_AHEAD + 2) this.buffers.delete(k)
@@ -249,7 +251,7 @@ export class Player {
 
   private nextOf(seg: number, rep: number): { seg: number; rep: number } | null {
     if (rep + 1 < this.repeatsFor(seg)) return { seg, rep: rep + 1 }
-    if (seg + 1 < this.pack.segments.length) return { seg: seg + 1, rep: 0 }
+    if (seg + 1 < this.pack.phrases.length) return { seg: seg + 1, rep: 0 }
     return this.settings.loop ? { seg: 0, rep: 0 } : null
   }
 
@@ -294,7 +296,7 @@ export class Player {
         const nx = this.nextOf(seg, rep)
         this.cursor = nx ? { ...nx, at: step.next } : null
         for (let k = 1; k <= DECODE_AHEAD; k++) {
-          const s = (seg + k) % this.pack.segments.length
+          const s = (seg + k) % this.pack.phrases.length
           if (s > seg || this.settings.loop) void this.decode(s).catch(() => {})
         }
       }
@@ -410,7 +412,7 @@ export class Player {
   }
 
   jumpTo(seg: number) {
-    const n = this.pack.segments.length
+    const n = this.pack.phrases.length
     seg = ((seg % n) + n) % n
     this.bonus.clear()
     this.startSeg = seg
@@ -518,11 +520,14 @@ export class Player {
 
   private updateMetadata(seg: number) {
     if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return
-    const s = this.pack.segments[seg]
+    const p = this.pack.phrases[seg]
+    const fields = this.pack.meta.fields
+    const title = p.values[primaryField(fields)?.key ?? ''] || p.file
+    const translation = translationField(fields)
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: s.text || s.file,
-      artist: s.translation,
-      album: `${this.pack.title} · ${seg + 1}/${this.pack.segments.length}`,
+      title,
+      artist: translation ? p.values[translation.key] : '',
+      album: `${this.pack.meta.title} · ${seg + 1}/${this.pack.phrases.length}`,
       artwork: [{ src: new URL('icon-512.png', document.baseURI).href, sizes: '512x512', type: 'image/png' }],
     })
   }

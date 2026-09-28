@@ -1,6 +1,15 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
+import { fieldDisplay, primaryField, type FieldDef } from '@lang-train/pack'
 import type { KeepAliveMode, Player, Settings } from './engine/Player'
-import { loadDisplay, saveDisplay, saveOverrides, saveSettings, type Display } from './storage'
+import {
+  loadDisplay,
+  loadFieldVisibility,
+  saveDisplay,
+  saveFieldVisibility,
+  saveOverrides,
+  saveUserSettings,
+  type Display,
+} from './storage'
 
 // Re-render on engine events, plus frequent polling while the screen is visible.
 function usePlayerTick(player: Player) {
@@ -67,16 +76,28 @@ const round = (x: number) => Math.round(x * 10) / 10
 export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAlive: (m: KeepAliveMode) => void }) {
   usePlayerTick(player)
   const [display, setDisplay] = useState<Display>(loadDisplay)
+  const [visibility, setVisibility] = useState(() => loadFieldVisibility(player.pack.meta.id))
   useWakeLock(display.wakeLock)
   const listRef = useRef<HTMLOListElement>(null)
 
+  const { meta, phrases } = player.pack
+  const fields = meta.fields
+  const primary = primaryField(fields)
+  const toggleable = fields.filter((f) => fieldDisplay(f, fields) === 'toggle')
+  const isShown = (f: FieldDef) => {
+    const d = fieldDisplay(f, fields)
+    return d === 'always' || (d === 'toggle' && visibility[f.key] !== false)
+  }
+  const primaryText = (i: number) => (primary && phrases[i].values[primary.key]) || phrases[i].file
+
   const snap = player.snapshot()
   const settings = player.getSettings()
-  const seg = player.pack.segments[snap.seg]
+  const phrase = phrases[snap.seg]
   const ov = player.getOverride(snap.seg)
-  const baseRepeats = ov.repeats ?? settings.repeats
-  const pauseExtra = ov.pauseExtra ?? settings.pauseExtra
+  const baseRepeats = ov.repeats ?? phrase.repeats ?? settings.repeats
+  const pauseExtra = ov.pauseExtra ?? phrase.pause ?? settings.pauseExtra
   const bonus = player.bonusFor(snap.seg)
+  const hint = (own: unknown, fromPack: unknown) => (own != null ? 'custom' : fromPack != null ? 'pack' : undefined)
 
   useEffect(() => {
     listRef.current?.querySelector('.active')?.scrollIntoView({ block: 'nearest' })
@@ -87,13 +108,18 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
     setDisplay(d)
     saveDisplay(d)
   }
+  const setShown = (key: string, shown: boolean) => {
+    const v = { ...visibility, [key]: shown }
+    setVisibility(v)
+    saveFieldVisibility(meta.id, v)
+  }
   const setSettings = (patch: Partial<Settings>) => {
     player.setSettings(patch)
-    saveSettings(player.getSettings())
+    saveUserSettings(patch)
   }
   const setOverride = (patch: Parameters<Player['setOverride']>[1]) => {
     player.setOverride(snap.seg, patch)
-    saveOverrides(player.pack.id, player.getOverrides())
+    saveOverrides(meta.id, player.getOverrides())
   }
 
   const phaseLabel =
@@ -111,12 +137,12 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
 
   return (
     <main className="player">
-      <div className="pack-title">{player.pack.title}</div>
+      <div className="pack-title">{meta.title}</div>
 
       <section className={`card phase-${snap.status === 'playing' ? snap.phase : snap.status}`}>
         <div className="meta">
           <span>
-            {snap.seg + 1} / {player.pack.segments.length}
+            {snap.seg + 1} / {phrases.length}
           </span>
           <span>
             repeat {Math.min(snap.rep + 1, snap.totalRepeats)} / {snap.totalRepeats}
@@ -126,10 +152,22 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
         <div className="progress">
           <div style={{ width: `${Math.round(snap.phaseProgress * 100)}%` }} />
         </div>
-        <p className="text">{seg.text || seg.file}</p>
-        {display.transcription && seg.transcription && <p className="transcription">{seg.transcription}</p>}
-        {display.translation && seg.translation && <p className="translation">{seg.translation}</p>}
-        {display.notes && seg.notes && <p className="notes">{seg.notes}</p>}
+        <p className="text" lang={primary?.lang} dir={primary?.dir}>
+          {primaryText(snap.seg)}
+        </p>
+        {fields
+          .filter((f) => f !== primary && isShown(f) && phrase.values[f.key])
+          .map((f) => (
+            <p
+              key={f.key}
+              className={`field${f.role ? ` role-${f.role}` : ''}${f.multiline ? ' multiline' : ''}`}
+              lang={f.lang}
+              dir={f.dir}
+              title={f.label}
+            >
+              {phrase.values[f.key]}
+            </p>
+          ))}
       </section>
 
       <div className="controls">
@@ -155,20 +193,20 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
         <Stepper
           label="Repeats"
           value={String(baseRepeats)}
-          hint={bonus ? `+${bonus} now` : ov.repeats != null ? 'custom' : undefined}
+          hint={bonus ? `+${bonus} now` : hint(ov.repeats, phrase.repeats)}
           onDec={() => setOverride({ repeats: Math.max(1, baseRepeats - 1) })}
           onInc={() => setOverride({ repeats: Math.min(20, baseRepeats + 1) })}
         />
         <Stepper
           label="Extra pause"
           value={`${pauseExtra.toFixed(1)} s`}
-          hint={ov.pauseExtra != null ? 'custom' : undefined}
+          hint={hint(ov.pauseExtra, phrase.pause)}
           onDec={() => setOverride({ pauseExtra: Math.max(0, round(pauseExtra - 0.5)) })}
           onInc={() => setOverride({ pauseExtra: Math.min(30, round(pauseExtra + 0.5)) })}
         />
         {(ov.repeats != null || ov.pauseExtra != null) && (
           <button className="ghost" onClick={() => setOverride({ repeats: undefined, pauseExtra: undefined })}>
-            Reset to defaults
+            Reset my changes
           </button>
         )}
       </section>
@@ -197,22 +235,12 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
           <input type="checkbox" checked={settings.loop} onChange={(e) => setSettings({ loop: e.target.checked })} />
           Loop
         </label>
-        <label className="check">
-          <input type="checkbox" checked={display.translation} onChange={(e) => setDisp({ translation: e.target.checked })} />
-          Translation
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={display.transcription}
-            onChange={(e) => setDisp({ transcription: e.target.checked })}
-          />
-          Transcription
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={display.notes} onChange={(e) => setDisp({ notes: e.target.checked })} />
-          Notes
-        </label>
+        {toggleable.map((f) => (
+          <label className="check" key={f.key}>
+            <input type="checkbox" checked={visibility[f.key] !== false} onChange={(e) => setShown(f.key, e.target.checked)} />
+            {f.label}
+          </label>
+        ))}
         <label className="check">
           <input type="checkbox" checked={display.wakeLock} onChange={(e) => setDisp({ wakeLock: e.target.checked })} />
           Keep screen on
@@ -231,9 +259,9 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
       <details className="panel">
         <summary>Phrases</summary>
         <ol className="list" ref={listRef}>
-          {player.pack.segments.map((s, i) => (
-            <li key={s.id} className={i === snap.seg ? 'active' : ''} onClick={() => player.jumpTo(i)}>
-              {s.text || s.file}
+          {phrases.map((p, i) => (
+            <li key={p.id} className={i === snap.seg ? 'active' : ''} onClick={() => player.jumpTo(i)}>
+              {primaryText(i)}
             </li>
           ))}
         </ol>

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
+import { readPack, type Pack } from '@lang-train/pack'
 import { Player, type Settings } from './engine/Player'
-import { loadPack, type Pack } from '@lang-train/pack'
 import { PlayerView } from './PlayerView'
-import { loadOverrides, loadSettings, saveSettings } from './storage'
+import { effectiveSettings, loadOverrides, saveUserSettings } from './storage'
+
+const docsUrl = `https://github.com/ikvm-fr/lang-train/blob/${__BRANCH__ === 'local' ? 'main' : __BRANCH__}/docs/pack-format.md`
 
 function UpdateBanner() {
   const {
@@ -26,8 +28,10 @@ function UpdateBanner() {
   )
 }
 
-function createPlayer(pack: Pack, settings: Settings) {
-  return new Player(pack, settings, loadOverrides(pack.id))
+function createPlayer(pack: Pack, warnings: readonly string[] = []) {
+  const player = new Player(pack, effectiveSettings(pack.meta.defaults), loadOverrides(pack.meta.id))
+  warnings.forEach((w) => player.log(`warning: ${w}`))
+  return player
 }
 
 export default function App() {
@@ -42,9 +46,9 @@ export default function App() {
     setBusy(true)
     setError(null)
     try {
-      const pack = await loadPack(await bytes, name)
+      const { warnings, ...pack } = await readPack(await bytes, name)
       await playerRef.current?.dispose()
-      setPlayer(createPlayer(pack, loadSettings()))
+      setPlayer(createPlayer(pack, warnings))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -77,15 +81,14 @@ export default function App() {
   // The keep-alive mode changes how AudioContext is wired, so the player is recreated.
   async function changeKeepAlive(mode: Settings['keepAlive']) {
     if (!player) return
-    const settings = { ...player.getSettings(), keepAlive: mode }
-    saveSettings(settings)
+    saveUserSettings({ keepAlive: mode })
     await player.dispose()
-    setPlayer(createPlayer(player.pack, settings))
+    setPlayer(createPlayer(player.pack))
   }
 
   useEffect(() => {
     if (!player) document.title = 'Lang Train'
-    else document.title = `${player.pack.title} — Lang Train`
+    else document.title = `${player.pack.meta.title} — Lang Train`
   }, [player])
 
   return (
@@ -115,16 +118,9 @@ export default function App() {
           <p className="muted small">
             Make your own pack in the <a href={`${import.meta.env.BASE_URL}editor/`}>editor</a> (desktop).
           </p>
-          <details className="help">
-            <summary>Pack format (provisional)</summary>
-            <p>
-              A ZIP with <code>phrases.csv</code> (UTF-8 or cp1251) and audio files. Columns:
-            </p>
-            <pre>file,text,translation,transcription,notes{'\n'}audio/001.mp3,Guten Morgen!,Good morning!,[ɡˈuːtən],</pre>
-            <p>
-              Optional <code>pack.json</code>: <code>{'{ "id": "...", "title": "..." }'}</code>
-            </p>
-          </details>
+          <p className="muted small">
+            Pack format: <a href={docsUrl}>docs/pack-format.md</a>
+          </p>
         </main>
       )}
 

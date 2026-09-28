@@ -126,16 +126,6 @@ footer {
   gap: 12px;
   padding-top: 16px;
 }
-.help pre,
-.help code {
-  font-size: 12px;
-  overflow-x: auto;
-}
-.help pre {
-  background: var(--card);
-  padding: 8px;
-  border-radius: 8px;
-}
 
 .player {
   display: flex;
@@ -197,19 +187,17 @@ footer {
   margin: 14px 0 6px;
   overflow-wrap: anywhere;
 }
-.transcription {
+.field {
   color: var(--muted);
   margin: 0 0 8px;
   font-family: 'Noto Sans', 'Segoe UI', sans-serif;
 }
-.translation {
+.field.role-translation {
+  color: var(--text);
   font-size: 18px;
-  margin: 0 0 6px;
 }
-.notes {
-  color: var(--muted);
+.field.multiline {
   font-size: 14px;
-  margin: 0;
   white-space: pre-wrap;
 }
 
