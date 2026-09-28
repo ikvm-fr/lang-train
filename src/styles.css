@@ -1,0 +1,320 @@
+:root {
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --text: #15181d;
+  --muted: #677080;
+  --accent: #1f6feb;
+  --accent-text: #ffffff;
+  --speak: #1f6feb;
+  --pause: #d97706;
+  --border: #dde1e7;
+  --error: #c62828;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418;
+    --card: #1b1f25;
+    --text: #e8eaee;
+    --muted: #9099a6;
+    --accent: #3b82f6;
+    --speak: #3b82f6;
+    --pause: #f59e0b;
+    --border: #2c323a;
+    --error: #ef5350;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+button,
+select {
+  font: inherit;
+  color: inherit;
+}
+button {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  min-height: 44px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+button:active {
+  transform: scale(0.97);
+}
+button:disabled {
+  opacity: 0.5;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--accent);
+  padding: 6px 8px;
+  min-height: 36px;
+}
+
+.app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 12px 16px calc(24px + env(safe-area-inset-bottom));
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.top h1 {
+  font-size: 20px;
+  margin: 4px 0;
+}
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 13px;
+}
+.error {
+  color: var(--error);
+}
+footer {
+  margin-top: auto;
+  padding-top: 24px;
+  font-size: 12px;
+  text-align: center;
+  word-break: break-all;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.banner button {
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.start {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+}
+.help pre,
+.help code {
+  font-size: 12px;
+  overflow-x: auto;
+}
+.help pre {
+  background: var(--card);
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.player {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pack-title {
+  color: var(--muted);
+  font-size: 14px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.card.phase-speaking {
+  border-left-color: var(--speak);
+}
+.card.phase-pause {
+  border-left-color: var(--pause);
+}
+.meta {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 13px;
+}
+.phase {
+  font-weight: 600;
+  margin: 4px 0 6px;
+}
+.phase-speaking .phase {
+  color: var(--speak);
+}
+.phase-pause .phase {
+  color: var(--pause);
+}
+.progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.progress > div {
+  height: 100%;
+  background: var(--muted);
+}
+.phase-speaking .progress > div {
+  background: var(--speak);
+}
+.phase-pause .progress > div {
+  background: var(--pause);
+}
+.text {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 14px 0 6px;
+  overflow-wrap: anywhere;
+}
+.transcription {
+  color: var(--muted);
+  margin: 0 0 8px;
+  font-family: 'Noto Sans', 'Segoe UI', sans-serif;
+}
+.translation {
+  font-size: 18px;
+  margin: 0 0 6px;
+}
+.notes {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+}
+.controls button {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  font-size: 22px;
+  padding: 0;
+}
+.controls button.big {
+  width: 76px;
+  height: 76px;
+  font-size: 30px;
+}
+.quick {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+}
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+.panel h2 {
+  font-size: 15px;
+  margin: 2px 0 8px;
+}
+.panel summary {
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+.stepper .label {
+  flex: 1;
+}
+.stepper button {
+  width: 44px;
+  padding: 0;
+}
+.stepper .value {
+  min-width: 56px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.stepper .hint {
+  font-size: 12px;
+  color: var(--pause);
+  min-width: 56px;
+}
+.check,
+.select {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+}
+.check input {
+  width: 20px;
+  height: 20px;
+}
+.select {
+  justify-content: space-between;
+}
+.select select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  max-width: 60%;
+}
+.list {
+  margin: 4px 0;
+  padding-left: 28px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.list li {
+  padding: 6px 4px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.list li.active {
+  background: var(--bg);
+  font-weight: 600;
+}
+.log {
+  font-size: 11px;
+  max-height: 50vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  margin: 4px 0 0;
+}
