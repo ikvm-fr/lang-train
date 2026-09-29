@@ -1,5 +1,5 @@
 import { FIELD_KEY_PATTERN, isReservedColumn, type FieldDef } from '@lang-train/pack'
-import type { AudioInfo, ProjectState, Region } from './store'
+import type { AudioInfo, PackOrigin, ProjectState, Region } from './store'
 
 // Project file (JSON): everything except the audio. Used for autosave and for backup/transfer.
 
@@ -10,6 +10,7 @@ export interface ProjectFile {
   format: typeof PROJECT_FORMAT
   version: number
   packId: string
+  origin?: PackOrigin
   audio: AudioInfo
   fields: FieldDef[]
   regions: Region[]
@@ -23,6 +24,7 @@ export function toProjectFile(s: ProjectState): ProjectFile | null {
     format: PROJECT_FORMAT,
     version: PROJECT_VERSION,
     packId: s.packId,
+    ...(s.origin ? { origin: s.origin } : {}),
     audio: s.audio,
     fields: s.fields,
     regions: s.regions,
@@ -60,6 +62,8 @@ export function parseProjectFile(raw: unknown): ProjectFile {
       values: isObj(r.values)
         ? Object.fromEntries(Object.entries(r.values).filter(([, v]) => typeof v === 'string')) as Record<string, string>
         : {},
+      ...(num(r.pause) && (r.pause as number) >= 0 ? { pause: r.pause as number } : {}),
+      ...(num(r.repeats) && (r.repeats as number) >= 1 ? { repeats: r.repeats as number } : {}),
     }))
     .sort((a, b) => a.start - b.start)
   const maxId = Math.max(0, ...regions.map((r) => Number(/^p(\d+)$/.exec(r.id)?.[1] ?? 0)))
@@ -67,6 +71,15 @@ export function parseProjectFile(raw: unknown): ProjectFile {
     format: PROJECT_FORMAT,
     version: PROJECT_VERSION,
     packId: typeof raw.packId === 'string' && raw.packId ? raw.packId : crypto.randomUUID(),
+    ...(isObj(raw.origin) && typeof raw.origin.title === 'string' && typeof raw.origin.sourceId === 'string'
+      ? {
+          origin: {
+            title: raw.origin.title,
+            sourceId: raw.origin.sourceId,
+            ...(isObj(raw.origin.lang) ? { lang: raw.origin.lang as PackOrigin['lang'] } : {}),
+          },
+        }
+      : {}),
     audio: { name: audio.name, size: audio.size as number, duration: audio.duration as number },
     fields,
     regions,

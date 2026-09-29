@@ -428,3 +428,14 @@ footer {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+.start-actions {
+  display: flex;
+  gap: 8px;
+}
+.form .radio-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}

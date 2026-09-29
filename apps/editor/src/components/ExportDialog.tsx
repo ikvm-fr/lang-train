@@ -1,6 +1,6 @@
 import { primaryField, readPack, type Pack } from '@lang-train/pack'
 import { useRef, useState } from 'react'
-import { appendToPack, buildPack, downloadBytes, safeFileName, type ExportOptions } from '../export/buildPack'
+import { appendToPack, buildPack, downloadBytes, safeFileName, updatePack, type ExportOptions } from '../export/buildPack'
 import { store } from '../state/store'
 import { Dialog } from './Dialog'
 
@@ -17,11 +17,17 @@ function loadPrefs(): Omit<ExportOptions, 'title'> {
 
 export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose: () => void }) {
   const project = store.getState()
-  const [opts, setOpts] = useState<ExportOptions>(() => ({
-    ...loadPrefs(),
-    title: project.audio?.name.replace(/\.[^.]+$/, '') ?? '',
-  }))
-  const [mode, setMode] = useState<'new' | 'append'>('new')
+  const origin = project.origin
+  const [opts, setOpts] = useState<ExportOptions>(() => {
+    const prefs = loadPrefs()
+    return {
+      ...prefs,
+      target: origin?.lang?.target ?? prefs.target,
+      native: origin?.lang?.native ?? prefs.native,
+      title: origin?.title ?? project.audio?.name.replace(/\.[^.]+$/, '') ?? '',
+    }
+  })
+  const [mode, setModeState] = useState<'new' | 'append' | 'update'>(origin ? 'update' : 'new')
   const [target, setTarget] = useState<{ pack: Pack; fileName: string } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<[number, number] | null>(null)
@@ -31,10 +37,19 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
   const primary = primaryField(project.fields)
   const emptyCount = primary ? project.regions.filter((r) => !r.values[primary.key]?.trim()).length : 0
 
+  const setMode = (m: typeof mode) => {
+    setModeState(m)
+    setTarget(null)
+    setError(null)
+  }
+
   const pickPack = async (file: File) => {
     setError(null)
     try {
       const { warnings: _w, ...pack } = await readPack(new Uint8Array(await file.arrayBuffer()), file.name)
+      if (mode === 'update' && pack.meta.id !== project.packId) {
+        throw new Error(`this is not the pack “${origin?.title}” this project was opened from`)
+      }
       setTarget({ pack, fileName: file.name })
     } catch (e) {
       setTarget(null)
@@ -55,6 +70,9 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
       const onProgress = (done: number, total: number) => setProgress([done, total])
       if (mode === 'append' && target) {
         const zip = await appendToPack(target.pack, store.getState(), buffer, opts, onProgress)
+        downloadBytes(zip, target.fileName)
+      } else if (mode === 'update' && target) {
+        const zip = await updatePack(target.pack, store.getState(), buffer, opts, onProgress)
         downloadBytes(zip, target.fileName)
       } else {
         const zip = await buildPack(store.getState(), buffer, opts, onProgress)
@@ -80,15 +98,25 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
           <button
             className="primary"
             onClick={() => void run()}
-            disabled={busy || !project.regions.length || (mode === 'append' && !target)}
+            disabled={busy || !project.regions.length || (mode !== 'new' && !target)}
           >
-            {mode === 'append' ? `Append ${project.regions.length} phrases` : `Export ${project.regions.length} phrases`}
+            {mode === 'append'
+              ? `Append ${project.regions.length} phrases`
+              : mode === 'update'
+                ? `Update pack (${project.regions.length} phrases)`
+                : `Export ${project.regions.length} phrases`}
           </button>
         </>
       }
     >
       <div className="form">
         <div className="radio-row">
+          {origin && (
+            <label>
+              <input type="radio" checked={mode === 'update'} onChange={() => setMode('update')} disabled={busy} /> Update
+              “{origin.title}”
+            </label>
+          )}
           <label>
             <input type="radio" checked={mode === 'new'} onChange={() => setMode('new')} disabled={busy} /> New pack
           </label>
@@ -97,7 +125,7 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
             existing pack
           </label>
         </div>
-        {mode === 'append' && (
+        {mode !== 'new' && (
           <div className="append-target">
             <button onClick={() => fileInput.current?.click()} disabled={busy}>
               Choose pack ZIP…
@@ -107,7 +135,12 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
                 {target.fileName}: “{target.pack.meta.title}”, {target.pack.phrases.length} phrases
               </span>
             ) : (
-              <span className="muted">The result downloads as a new file with the same name.</span>
+              <span className="muted">
+                {mode === 'update'
+                  ? `Choose the pack “${origin?.title}” you opened. `
+                  : ''}
+                The result downloads as a new file with the same name.
+              </span>
             )}
             <input
               ref={fileInput}

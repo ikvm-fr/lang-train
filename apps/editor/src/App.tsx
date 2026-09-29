@@ -4,10 +4,12 @@ import { LONG_FILE_SECONDS, decodeFile } from './audio/decode'
 import { DetectPanel } from './components/DetectPanel'
 import { ExportDialog } from './components/ExportDialog'
 import { FieldsDialog } from './components/FieldsDialog'
+import { OpenPackDialog, type PackToOpen } from './components/OpenPackDialog'
 import { RegionTable } from './components/RegionTable'
 import { Waveform, type WaveformHandle } from './components/Waveform'
 import { formatTime } from './format'
 import { downloadBytes } from './export/buildPack'
+import { projectFromPack } from './state/fromPack'
 import { loadSavedProject, saveProject } from './state/persist'
 import { formatAudacityLabels, parseAudacityLabels, parseProjectFile, toProjectFile, type ProjectFile } from './state/projectFile'
 import { store, useProject, type Region } from './state/store'
@@ -48,7 +50,7 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [dialog, setDialog] = useState<'fields' | 'export' | null>(null)
+  const [dialog, setDialog] = useState<'fields' | 'export' | 'open-pack' | null>(null)
   const [markIn, setMarkIn] = useState<number | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [detecting, setDetecting] = useState(false)
@@ -60,19 +62,40 @@ export default function App() {
   usePlayerTick(handle)
   useProject((s) => s) // re-render on any change (undo/redo button state)
 
-  const openFile = useCallback(async (file: File) => {
-    if (store.getState().regions.length && !confirm('Open another file? The current regions will be discarded.')) return
+  const openFile = useCallback(async (file: File, fromPack?: PackToOpen) => {
+    // The current project is autosaved per recording; make sure its latest changes are stored.
+    const current = toProjectFile(store.getState())
+    if (current?.regions.length) await saveProject(current).catch(() => {})
     setBusy(`Decoding ${file.name}…`)
     setError(null)
     setNotice(null)
     try {
       const decoded = await decodeFile(file)
-      setBuffer(null)
-      setMarkIn(null)
-      setDetecting(false)
       const info = { name: file.name, size: file.size, duration: decoded.duration }
       const saved = await loadSavedProject(info)
-      if (
+      if (fromPack) {
+        const source = fromPack.pack.meta.sources?.find((s) => s.id === fromPack.sourceId)
+        if (source && source.name !== file.name && !confirm(`The pack was cut from ${source.name}, not ${file.name}. Use this file anyway?`)) {
+          return
+        }
+        const { project, dropped } = projectFromPack(fromPack.pack, fromPack.sourceId, info)
+        if (
+          saved?.regions.length &&
+          !confirm(
+            `You have autosaved work on ${file.name} (${saved.regions.length} regions). Replace it with the ${project.regions.length} phrases from the pack?`,
+          )
+        ) {
+          return
+        }
+        store.loadProject(project)
+        const notes = [`Opened ${project.regions.length} phrases of “${fromPack.pack.meta.title}”.`]
+        if (dropped) notes.push(`${dropped} phrases were skipped (overlapping or outside the recording).`)
+        if (source?.duration && Math.abs(source.duration - decoded.duration) > 0.05) {
+          notes.push('The recording length differs from the one the pack was made from; check the region positions.')
+        }
+        notes.push('Export → Update writes the changes back into the pack.')
+        setNotice(notes.join(' '))
+      } else if (
         saved?.regions.length &&
         confirm(`Continue your last project for ${file.name} (${saved.regions.length} regions)?`)
       ) {
@@ -83,6 +106,10 @@ export default function App() {
       } else {
         store.newProject(info)
       }
+      // Remount the waveform for the new recording.
+      setBuffer(null)
+      setMarkIn(null)
+      setDetecting(false)
       setSaved(null)
       setBuffer(decoded)
       if (decoded.duration > LONG_FILE_SECONDS) {
@@ -338,6 +365,8 @@ export default function App() {
         <details className="menu">
           <summary>Project</summary>
           <div className="menu-items" onClick={(e) => ((e.currentTarget.parentElement as HTMLDetailsElement).open = false)}>
+            <button onClick={() => setDialog('open-pack')}>Open pack for editing…</button>
+            <hr />
             <button onClick={saveProjectFile} disabled={!audio}>
               Save project file…
             </button>
@@ -409,9 +438,12 @@ export default function App() {
             Open an MP3 or WAV recording (or drop it here), mark phrases as regions on the waveform, fill in their texts
             and export a pack for the player.
           </p>
-          <button className="primary" onClick={() => fileInput.current?.click()}>
-            Open audio
-          </button>
+          <div className="start-actions">
+            <button className="primary" onClick={() => fileInput.current?.click()}>
+              Open audio
+            </button>
+            <button onClick={() => setDialog('open-pack')}>Open pack for editing</button>
+          </div>
           {saved && (
             <p className="last-project">
               Last project: <strong>{saved.audio.name}</strong>, {saved.regions.length} regions
@@ -467,6 +499,15 @@ export default function App() {
       )}
 
       {dialog === 'fields' && <FieldsDialog onClose={() => setDialog(null)} />}
+      {dialog === 'open-pack' && (
+        <OpenPackDialog
+          onClose={() => setDialog(null)}
+          onOpen={(file, target) => {
+            setDialog(null)
+            void openFile(file, target)
+          }}
+        />
+      )}
       {dialog === 'export' && buffer && <ExportDialog buffer={buffer} onClose={() => setDialog(null)} />}
 
       <footer className="muted">

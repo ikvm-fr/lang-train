@@ -17,6 +17,7 @@ In the MVP:
 - Automatic silence detection to propose regions.
 - Export: cut regions, encode MP3, write `pack.json` + `phrases.csv`, download a ZIP.
 - Append the regions to an existing pack ZIP instead of creating a new one.
+- Reopen an exported pack together with its original recording and update it.
 - Autosave of the project in the browser.
 
 Not in the MVP (possible later):
@@ -154,6 +155,21 @@ target/native language codes.
 - appends the new rows after the existing ones, continuing the clip numbering and ids;
 - downloads the result as a new ZIP (the original file is not modified; browsers cannot overwrite files in place).
 
+## Reopening a pack
+
+**Open pack for editing** (start screen or *Project ▾*) turns an exported pack back into a project:
+
+1. Choose the pack ZIP. If it was cut from several recordings (see *Append*), choose which one to edit.
+2. Open that recording. Regions are rebuilt from the `source`, `start`, `end` columns, with their texts,
+   the pack's field model and ids, and per-phrase `pause`/`repeats` (kept, not editable yet).
+   Phrases that overlap or lie outside the recording are skipped with a notice.
+3. **Export → Update “title”** asks for the same pack ZIP (checked by pack id) and replaces the phrases of
+   that recording. Everything else is kept: phrases from other recordings (in place), title, languages,
+   unknown `pack.json` keys. Pack and phrase ids stay the same, so the player keeps its per-phrase settings.
+
+Packs without positions (made outside the editor, or prototype packs) cannot be reopened.
+If an autosave exists for the same recording, the editor asks before replacing it.
+
 ## Persistence
 
 - **Autosave** to IndexedDB, 1 s after the last change and when the page is hidden: regions, field values,
@@ -171,6 +187,7 @@ target/native language codes.
   "format": "lang-train-project",
   "version": 1,
   "packId": "3f1c2a9e-…",
+  "origin": { "title": "Unit 3", "sourceId": "s1" },
   "audio": { "name": "unit3.mp3", "size": 6502211, "duration": 812.35 },
   "fields": [ { "key": "text", "label": "Original", "role": "primary" } ],
   "regions": [

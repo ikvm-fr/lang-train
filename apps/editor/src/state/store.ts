@@ -9,6 +9,9 @@ export interface Region {
   start: number
   end: number
   values: Record<string, string>
+  // Per-phrase playback values carried over from a pack (not editable in the editor yet).
+  pause?: number
+  repeats?: number
 }
 
 export interface AudioInfo {
@@ -17,8 +20,16 @@ export interface AudioInfo {
   duration: number
 }
 
+// The pack a project was opened from (see "Open pack for editing").
+export interface PackOrigin {
+  title: string
+  lang?: { target?: string; native?: string }
+  sourceId: string // which recording of the pack this project edits
+}
+
 export interface ProjectState {
   packId: string
+  origin?: PackOrigin
   audio: AudioInfo | null
   fields: FieldDef[]
   regions: Region[] // sorted by start, non-overlapping
@@ -95,6 +106,7 @@ export class ProjectStore {
     this.future = []
     this.state = {
       packId: p.packId,
+      origin: p.origin,
       audio: p.audio,
       fields: p.fields,
       regions: p.regions,
@@ -229,7 +241,7 @@ export class ProjectStore {
     const keys = new Set([...Object.keys(a.values), ...Object.keys(b.values)])
     const values: Record<string, string> = {}
     for (const k of keys) values[k] = [a.values[k], b.values[k]].filter((v) => v?.trim()).join(' ')
-    const merged: Region = { id: a.id, start: a.start, end: b.end, values }
+    const merged: Region = { ...a, end: b.end, values }
     this.set({ regions: [...regions.slice(0, i), merged, ...regions.slice(i + 2)], selectedId: a.id }, true)
     return true
   }

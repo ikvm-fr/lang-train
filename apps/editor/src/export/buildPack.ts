@@ -1,5 +1,6 @@
 import { mergeFields, PACK_FORMAT, PACK_VERSION, writePack, type Pack, type Phrase } from '@lang-train/pack'
 import { Mp3EncoderPool } from '../audio/encode'
+import { isPlaced } from '../state/fromPack'
 import type { ProjectState } from '../state/store'
 
 // Cuts regions out of the decoded recording, encodes them to MP3 and writes a pack ZIP.
@@ -58,6 +59,8 @@ async function encodeRegions(
         source: plan.sourceId,
         start: r.start,
         end: r.end,
+        ...(r.pause !== undefined ? { pause: r.pause } : {}),
+        ...(r.repeats !== undefined ? { repeats: r.repeats } : {}),
         audio: mp3,
       })
     }
@@ -111,6 +114,29 @@ export async function buildPack(
   return writePack(pack)
 }
 
+// Keeps region ids unless they clash with ids already in the pack.
+function idAllocator(existingIds: Iterable<string>) {
+  const ids = new Set(existingIds)
+  let next = Math.max(0, ...[...ids].map((id) => Number(/^p(\d+)$/.exec(id)?.[1] ?? 0))) + 1
+  return (id: string) => {
+    if (!ids.has(id)) {
+      ids.add(id)
+      return id
+    }
+    let fresh = `p${String(next++).padStart(4, '0')}`
+    while (ids.has(fresh)) fresh = `p${String(next++).padStart(4, '0')}`
+    ids.add(fresh)
+    return fresh
+  }
+}
+
+// File names not used by `taken`, numbered from 1 (or from `from`).
+function freshFileNames(count: number, taken: Set<string>, from = 1): string[] {
+  const out: string[] = []
+  for (let n = from; out.length < count; n++) if (!taken.has(clipName(n).toLowerCase())) out.push(clipName(n))
+  return out
+}
+
 // Appends the project's regions to an existing pack (see docs/pack-format.md#appending-to-an-existing-pack):
 // existing phrases and files are kept, numbering and ids continue, field models are merged.
 export async function appendToPack(
@@ -121,17 +147,8 @@ export async function appendToPack(
   onProgress: (done: number, total: number) => void,
 ): Promise<Uint8Array> {
   const files = new Set(existing.phrases.map((p) => p.file.toLowerCase()))
-  const ids = new Set(existing.phrases.map((p) => p.id))
   const numbers = existing.phrases.map((p) => Number(/(\d+)\.mp3$/i.exec(p.file)?.[1] ?? 0))
-  let nextFile = Math.max(existing.phrases.length, ...numbers) + 1
-  const idNumbers = existing.phrases.map((p) => Number(/^p(\d+)$/.exec(p.id)?.[1] ?? 0))
-  let nextId = Math.max(0, ...idNumbers) + 1
-
-  const fileNames: string[] = []
-  for (let i = 0; i < project.regions.length; i++) {
-    while (files.has(clipName(nextFile).toLowerCase())) nextFile++
-    fileNames.push(clipName(nextFile++))
-  }
+  const fileNames = freshFileNames(project.regions.length, files, Math.max(existing.phrases.length, ...numbers) + 1)
   const sources = existing.meta.sources ?? []
   const sourceIds = new Set(sources.map((s) => s.id))
   let n = sources.length + 1
@@ -144,16 +161,7 @@ export async function appendToPack(
     opts,
     {
       fileFor: (i) => fileNames[i],
-      idFor: (id) => {
-        if (!ids.has(id)) {
-          ids.add(id)
-          return id
-        }
-        let fresh = `p${String(nextId++).padStart(4, '0')}`
-        while (ids.has(fresh)) fresh = `p${String(nextId++).padStart(4, '0')}`
-        ids.add(fresh)
-        return fresh
-      },
+      idFor: idAllocator(existing.phrases.map((p) => p.id)),
       sourceId,
     },
     onProgress,
@@ -173,6 +181,50 @@ export async function appendToPack(
       modified: new Date().toISOString(),
     },
     phrases: [...existing.phrases, ...phrases],
+  })
+}
+
+// Replaces the phrases of the recording this project was opened from (project.origin.sourceId)
+// and keeps everything else in the pack: phrases from other recordings, title, unknown keys.
+export async function updatePack(
+  existing: Pack,
+  project: ProjectState,
+  buffer: AudioBuffer,
+  opts: ExportOptions,
+  onProgress: (done: number, total: number) => void,
+): Promise<Uint8Array> {
+  const sourceId = project.origin?.sourceId
+  if (!sourceId) throw new Error('This project was not opened from a pack')
+  const replaced = (p: Phrase) => p.source === sourceId && isPlaced(p)
+  const kept = existing.phrases.filter((p) => !replaced(p))
+  const firstReplaced = existing.phrases.findIndex(replaced)
+  const insertAt = firstReplaced < 0 ? kept.length : existing.phrases.slice(0, firstReplaced).filter((p) => !replaced(p)).length
+
+  const fileNames = freshFileNames(project.regions.length, new Set(kept.map((p) => p.file.toLowerCase())))
+  const phrases = await encodeRegions(
+    project,
+    buffer,
+    opts,
+    { fileFor: (i) => fileNames[i], idFor: idAllocator(kept.map((p) => p.id)), sourceId },
+    onProgress,
+  )
+
+  const { audio } = project
+  const sources = (existing.meta.sources ?? []).filter((s) => s.id !== sourceId)
+  const lang = existing.meta.lang ?? langOf(opts)
+  return writePack({
+    meta: {
+      ...existing.meta,
+      ...(lang ? { lang } : {}),
+      // Fields of phrases from other recordings must not disappear.
+      fields: kept.length ? mergeFields(project.fields, existing.meta.fields) : project.fields,
+      sources: audio
+        ? [...sources, { id: sourceId, name: audio.name, duration: Math.round(audio.duration * 1000) / 1000 }]
+        : sources,
+      generator: `lang-train-editor ${__APP_VERSION__}`,
+      modified: new Date().toISOString(),
+    },
+    phrases: [...kept.slice(0, insertAt), ...phrases, ...kept.slice(insertAt)],
   })
 }
 
