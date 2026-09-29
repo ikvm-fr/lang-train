@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { defaultDetectParams, detectSpeech, frameLevels } from '../audio/silence'
+import { useI18n, type Text } from '../i18n'
 import { store } from '../state/store'
 import { PREVIEW_PREFIX, type WaveformHandle } from './Waveform'
 
@@ -11,7 +12,7 @@ function Slider(props: {
   min: number
   max: number
   step: number
-  unit: string
+  format: (v: number) => string
   scale?: number
   disabled?: boolean
   onChange: (v: number) => void
@@ -29,9 +30,7 @@ function Slider(props: {
         disabled={props.disabled}
         onChange={(e) => props.onChange(Number(e.target.value) / k)}
       />
-      <span className="value">
-        {Math.round(props.value * k)} {props.unit}
-      </span>
+      <span className="value">{props.format(Math.round(props.value * k))}</span>
     </label>
   )
 }
@@ -45,8 +44,10 @@ export function DetectPanel({
   buffer: AudioBuffer
   handle: WaveformHandle
   onClose: () => void
-  onDone: (message: string) => void
+  onDone: (message: Text) => void
 }) {
+  const { t } = useI18n()
+  const ms = (v: number) => t('unit.ms', { value: v })
   const levels = useMemo(() => frameLevels(buffer.getChannelData(0), buffer.sampleRate), [buffer])
   const [auto, setAuto] = useState(true)
   const [manual, setManual] = useState(-40)
@@ -91,51 +92,59 @@ export function DetectPanel({
 
   const apply = () => {
     const { added, skipped } = store.addRegions(result.regions)
-    onDone(`Added ${added} regions${skipped ? `, skipped ${skipped} that overlap existing ones` : ''}. Ctrl+Z undoes.`)
+    onDone(() =>
+      [
+        t('notice.regionsAdded', { count: added }),
+        skipped ? t('notice.regionsSkipped', { count: skipped }) : '',
+        t('notice.undoHint'),
+      ]
+        .filter(Boolean)
+        .join(' '),
+    )
     onClose()
   }
 
   return (
     <section className="detect">
       <div className="detect-head">
-        <strong>Detect pauses</strong>
+        <strong>{t('detect.title')}</strong>
         <span className="muted">
-          {result.regions.length} phrases found
-          {overlapping ? `, ${overlapping} overlap existing regions and will be skipped` : ''} · noise floor{' '}
-          {Math.round(result.noiseFloor)} dBFS
+          {t('detect.found', { count: result.regions.length })}
+          {overlapping ? `, ${t('detect.overlap', { count: overlapping })}` : ''} ·{' '}
+          {t('detect.noise', { value: Math.round(result.noiseFloor) })}
         </span>
         <div className="spacer" />
         <label>
-          <input type="radio" checked={scope === 'file'} onChange={() => setScope('file')} /> Whole file
+          <input type="radio" checked={scope === 'file'} onChange={() => setScope('file')} /> {t('detect.wholeFile')}
         </label>
         <label>
-          <input type="radio" checked={scope === 'view'} onChange={() => setScope('view')} /> Visible part
+          <input type="radio" checked={scope === 'view'} onChange={() => setScope('view')} /> {t('detect.visible')}
         </label>
       </div>
       <div className="detect-controls">
         <div className="slider">
           <label>
-            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Auto threshold
+            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> {t('detect.auto')}
           </label>
         </div>
         <Slider
-          label="Silence below"
+          label={t('detect.silenceBelow')}
           value={auto ? result.threshold : manual}
           min={-60}
           max={-20}
           step={1}
-          unit="dBFS"
+          format={(v) => t('unit.dbfs', { value: v })}
           disabled={auto}
           onChange={setManual}
         />
-        <Slider label="Min pause" value={minSilence} min={100} max={2000} step={50} unit="ms" scale={1000} onChange={setMinSilence} />
-        <Slider label="Min phrase" value={minPhrase} min={100} max={2000} step={50} unit="ms" scale={1000} onChange={setMinPhrase} />
-        <Slider label="Padding" value={padding} min={0} max={500} step={10} unit="ms" scale={1000} onChange={setPadding} />
+        <Slider label={t('detect.minPause')} value={minSilence} min={100} max={2000} step={50} format={ms} scale={1000} onChange={setMinSilence} />
+        <Slider label={t('detect.minPhrase')} value={minPhrase} min={100} max={2000} step={50} format={ms} scale={1000} onChange={setMinPhrase} />
+        <Slider label={t('detect.padding')} value={padding} min={0} max={500} step={10} format={ms} scale={1000} onChange={setPadding} />
       </div>
       <div className="detect-actions">
-        <button onClick={onClose}>Cancel</button>
+        <button onClick={onClose}>{t('common.cancel')}</button>
         <button className="primary" onClick={apply} disabled={!result.regions.length || overlapping === result.regions.length}>
-          Add {result.regions.length - overlapping} regions
+          {t('detect.add', { count: result.regions.length - overlapping })}
         </button>
       </div>
     </section>

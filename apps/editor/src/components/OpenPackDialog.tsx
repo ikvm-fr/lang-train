@@ -1,6 +1,9 @@
+import { errorText } from '@lang-train/i18n'
 import { readPack, type Pack } from '@lang-train/pack'
 import { useRef, useState } from 'react'
+import { editorError } from '../errors'
 import { formatTime } from '../format'
+import { i18n, useI18n, type Text } from '../i18n'
 import { packSources } from '../state/fromPack'
 import { Dialog } from './Dialog'
 
@@ -12,9 +15,10 @@ export interface PackToOpen {
 // Step 1: choose a pack ZIP (and which recording, if it was cut from several).
 // Step 2: open that recording; the regions are rebuilt from the positions stored in the pack.
 export function OpenPackDialog({ onOpen, onClose }: { onOpen: (audio: File, target: PackToOpen) => void; onClose: () => void }) {
+  const { t } = useI18n()
   const [pack, setPack] = useState<{ pack: Pack; fileName: string } | null>(null)
   const [sourceId, setSourceId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<Text | null>(null)
   const packInput = useRef<HTMLInputElement>(null)
   const audioInput = useRef<HTMLInputElement>(null)
 
@@ -27,64 +31,70 @@ export function OpenPackDialog({ onOpen, onClose }: { onOpen: (audio: File, targ
       const { warnings: _w, ...p } = await readPack(new Uint8Array(await file.arrayBuffer()), file.name)
       const { sources } = packSources(p)
       if (!sources.length) {
-        throw new Error('This pack does not store where its phrases are in the original recording, so it cannot be reopened.')
+        throw editorError('noPositions')
       }
       setPack({ pack: p, fileName: file.name })
       setSourceId(sources[0].id)
     } catch (e) {
       setPack(null)
-      setError(`${file.name}: ${(e as Error).message}`)
+      setError(() => () => t('err.withFile', { file: file.name, detail: errorText(i18n, e) }))
     }
   }
 
   return (
     <Dialog
-      title="Open pack for editing"
+      title={t('open.title')}
       onClose={onClose}
       footer={
         <>
-          <button onClick={onClose}>Cancel</button>
+          <button onClick={onClose}>{t('common.cancel')}</button>
           <button className="primary" disabled={!source} onClick={() => audioInput.current?.click()}>
-            {source ? `Open ${source.name}…` : 'Open recording…'}
+            {source ? t('open.btnOpen', { name: source.name }) : t('open.btnOpenGeneric')}
           </button>
         </>
       }
     >
       <div className="form">
         <div className="append-target">
-          <button onClick={() => packInput.current?.click()}>Choose pack ZIP…</button>
+          <button onClick={() => packInput.current?.click()}>{t('open.choosePack')}</button>
           {pack && (
             <span>
-              {pack.fileName}: “{pack.pack.meta.title}”, {pack.pack.phrases.length} phrases
+              {t('open.packInfo', {
+                file: pack.fileName,
+                title: pack.pack.meta.title,
+                phrases: t('count.phrases', { count: pack.pack.phrases.length }),
+              })}
             </span>
           )}
         </div>
         {info && info.sources.length > 1 && (
           <div>
-            <p>This pack was cut from several recordings. Which one do you want to edit?</p>
+            <p>{t('open.whichSource')}</p>
             {info.sources.map((s) => (
               <label key={s.id} className="radio-line">
                 <input type="radio" checked={s.id === sourceId} onChange={() => setSourceId(s.id)} /> {s.name}
                 <span className="muted">
                   {' '}
-                  · {s.count} phrases{s.duration ? ` · ${formatTime(s.duration)}` : ''}
+                  · {t('count.phrases', { count: s.count })}
+                  {s.duration ? ` · ${formatTime(s.duration)}` : ''}
                 </span>
               </label>
             ))}
-            <p className="muted small">Phrases from the other recordings stay in the pack unchanged when you update it.</p>
+            <p className="muted small">{t('open.othersKept')}</p>
           </div>
         )}
         {source && (
           <p>
-            Now open the original recording <strong>{source.name}</strong>
-            {source.duration ? ` (${formatTime(source.duration)})` : ''}. Its {source.count} phrases will become regions you
-            can edit.
+            {t('open.nowOpen', {
+              name: source.duration ? `${source.name} (${formatTime(source.duration)})` : source.name,
+              phrases: t('count.phrases', { count: source.count }),
+            })}
           </p>
         )}
         {info && info.unplaced > 0 && (
-          <p className="warning">{info.unplaced} phrases have no position in a recording; they stay in the pack but cannot be edited here.</p>
+          <p className="warning">{t('open.unplaced', { count: info.unplaced })}</p>
         )}
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error">{error()}</p>}
       </div>
       <input
         ref={packInput}

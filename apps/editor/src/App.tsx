@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { errorText, LanguageSelect } from '@lang-train/i18n'
 import { primaryField } from '@lang-train/pack'
 import { LONG_FILE_SECONDS, decodeFile } from './audio/decode'
 import { DetectPanel } from './components/DetectPanel'
@@ -9,30 +10,43 @@ import { SavedProjectsDialog } from './components/SavedProjectsDialog'
 import { RegionTable } from './components/RegionTable'
 import { Waveform, type WaveformHandle } from './components/Waveform'
 import { formatTime } from './format'
+import { i18n, t, useI18n, type Text } from './i18n'
 import { downloadBytes } from './export/buildPack'
 import { projectFromPack } from './state/fromPack'
 import { deleteSavedProject, loadSavedProject, savedProjectKey, saveProject } from './state/persist'
 import { formatAudacityLabels, parseAudacityLabels, parseProjectFile, toProjectFile, type ProjectFile } from './state/projectFile'
 import { store, useProject, type Region } from './state/store'
 
-const SHORTCUTS: [string, string][] = [
-  ['Drag on waveform', 'Create a region'],
-  ['Drag region edges', 'Adjust boundaries'],
-  ['Space', 'Play / pause'],
-  ['I, then O', 'Mark start / end while listening → new region'],
-  ['Enter', 'Play selected region'],
-  ['L', 'Loop selected region'],
-  ['↑ / ↓', 'Previous / next region'],
-  ['← / →', 'Move start by 10 ms (Shift: 100 ms)'],
-  ['Alt + ← / →', 'Move end by 10 ms (Shift: 100 ms)'],
-  ['S', 'Split region at the playhead'],
-  ['M', 'Merge with the next region'],
-  ['Delete', 'Delete region'],
-  ['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo'],
-  ['+ / −', 'Zoom in / out'],
-  ['Esc', 'Leave a text field'],
-  ['Ctrl+Enter', 'Play region (also in text fields)'],
+// [key label (translated if it is a key of the dictionary), description key]
+const SHORTCUTS: [string, Parameters<typeof t>[0]][] = [
+  ['key.drag', 'sc.drag'],
+  ['key.edges', 'sc.edges'],
+  ['key.space', 'sc.space'],
+  ['key.io', 'sc.io'],
+  ['key.enter', 'sc.enter'],
+  ['L', 'sc.loop'],
+  ['↑ / ↓', 'sc.select'],
+  ['← / →', 'sc.nudgeStart'],
+  ['Alt + ← / →', 'sc.nudgeEnd'],
+  ['S', 'sc.split'],
+  ['M', 'sc.merge'],
+  ['key.delete', 'sc.delete'],
+  ['Ctrl+Z / Ctrl+Shift+Z', 'sc.undo'],
+  ['+ / −', 'sc.zoom'],
+  ['Esc', 'sc.esc'],
+  ['Ctrl+Enter', 'sc.ctrlEnter'],
 ]
+
+// Latin letter of a key press on any keyboard layout (e.g. Cyrillic): the typed letter if it is
+// Latin, otherwise the physical key.
+function letterOf(e: KeyboardEvent): string {
+  const k = e.key.length === 1 ? e.key.toLowerCase() : ''
+  if (/^[a-z]$/.test(k)) return k
+  return e.code.startsWith('Key') ? e.code.slice(3).toLowerCase() : ''
+}
+
+const withFile = (file: string, e: unknown): Text => () =>
+  t('err.withFile', { file, detail: e instanceof SyntaxError ? t('err.notJson') : errorText(i18n, e) })
 
 function isTextTarget(t: EventTarget | null) {
   return t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
@@ -44,13 +58,14 @@ function usePlayerTick(handle: WaveformHandle | null) {
 }
 
 export default function App() {
+  useI18n()
   const audio = useProject((s) => s.audio)
   const regionCount = useProject((s) => s.regions.length)
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null)
   const [handle, setHandle] = useState<WaveformHandle | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [busy, setBusy] = useState<Text | null>(null)
+  const [error, setError] = useState<Text | null>(null)
+  const [notice, setNotice] = useState<Text | null>(null)
   const [dialog, setDialog] = useState<'fields' | 'export' | 'open-pack' | 'saved' | null>(null)
   const [markIn, setMarkIn] = useState<number | null>(null)
   const [showHelp, setShowHelp] = useState(false)
@@ -67,7 +82,7 @@ export default function App() {
   const openFile = useCallback(async (file: File, fromPack?: PackToOpen) => {
     // The current project is autosaved per recording; store its latest changes before switching.
     flushRef.current()
-    setBusy(`Decoding ${file.name}…`)
+    setBusy(() => () => t('busy.decoding', { name: file.name }))
     setError(null)
     setNotice(null)
     try {
@@ -76,33 +91,43 @@ export default function App() {
       const saved = await loadSavedProject(info)
       if (fromPack) {
         const source = fromPack.pack.meta.sources?.find((s) => s.id === fromPack.sourceId)
-        if (source && source.name !== file.name && !confirm(`The pack was cut from ${source.name}, not ${file.name}. Use this file anyway?`)) {
+        if (source && source.name !== file.name && !confirm(t('confirm.packSourceName', { expected: source.name, actual: file.name }))) {
           return
         }
         const { project, dropped } = projectFromPack(fromPack.pack, fromPack.sourceId, info)
         if (
           saved?.regions.length &&
           !confirm(
-            `You have autosaved work on ${file.name} (${saved.regions.length} regions). Replace it with the ${project.regions.length} phrases from the pack?`,
+            t('confirm.replaceAutosave', {
+              name: file.name,
+              regions: t('count.regions', { count: saved.regions.length }),
+              phrases: t('count.phrases', { count: project.regions.length }),
+            }),
           )
         ) {
           return
         }
         store.loadProject(project)
-        const notes = [`Opened ${project.regions.length} phrases of “${fromPack.pack.meta.title}”.`]
-        if (dropped) notes.push(`${dropped} phrases were skipped (overlapping or outside the recording).`)
-        if (source?.duration && Math.abs(source.duration - decoded.duration) > 0.05) {
-          notes.push('The recording length differs from the one the pack was made from; check the region positions.')
-        }
-        notes.push('Export → Update writes the changes back into the pack.')
-        setNotice(notes.join(' '))
+        const title = fromPack.pack.meta.title
+        const count = project.regions.length
+        const lengthDiffers = !!source?.duration && Math.abs(source.duration - decoded.duration) > 0.05
+        setNotice(() => () =>
+          [
+            t('notice.packOpened', { title, phrases: t('count.phrases', { count }) }),
+            dropped ? t('notice.packDropped', { count: dropped }) : '',
+            lengthDiffers ? t('notice.packLengthDiffers') : '',
+            t('notice.packUpdateHint'),
+          ]
+            .filter(Boolean)
+            .join(' '),
+        )
       } else if (
         saved?.regions.length &&
-        confirm(`Continue your last project for ${file.name} (${saved.regions.length} regions)?`)
+        confirm(t('confirm.continueProject', { name: file.name, regions: t('count.regions', { count: saved.regions.length }) }))
       ) {
         store.loadProject({ ...saved, audio: info })
         if (Math.abs(saved.audio.duration - decoded.duration) > 0.05) {
-          setNotice('The file length differs from the saved project; check the region positions.')
+          setNotice(() => () => t('notice.lengthDiffers'))
         }
       } else {
         store.newProject(info)
@@ -114,10 +139,10 @@ export default function App() {
       setSaved(null)
       setBuffer(decoded)
       if (decoded.duration > LONG_FILE_SECONDS) {
-        setNotice(`This recording is ${formatTime(decoded.duration)} long. Very long files use a lot of memory; consider splitting it.`)
+        setNotice(() => () => t('notice.longFile', { duration: formatTime(decoded.duration) }))
       }
     } catch (e) {
-      setError((e as Error).message)
+      setError(() => () => errorText(i18n, e))
     } finally {
       setBusy(null)
     }
@@ -169,13 +194,14 @@ export default function App() {
         if (e.key === 'Escape') (e.target as HTMLElement).blur()
         return
       }
-      if (ctrl && e.key.toLowerCase() === 'z') {
+      const letter = letterOf(e)
+      if (ctrl && letter === 'z') {
         if (e.shiftKey) store.redo()
         else store.undo()
         e.preventDefault()
         return
       }
-      if (ctrl && e.key.toLowerCase() === 'y') {
+      if (ctrl && letter === 'y') {
         store.redo()
         e.preventDefault()
         return
@@ -183,21 +209,20 @@ export default function App() {
       if (ctrl || e.altKey && !e.key.startsWith('Arrow')) return
 
       const step = e.shiftKey ? 0.1 : 0.01
-      const t = player.getCurrentTime()
+      const now = player.getCurrentTime()
       let handled = true
-      switch (e.key) {
+      // Letters by layout-independent `letter`, other keys by `e.key`.
+      switch (letter || e.key) {
         case ' ':
           if (player.isPlaying()) player.pause()
           else void player.play()
           break
         case 'i':
-        case 'I':
-          setMarkIn(t)
+          setMarkIn(now)
           break
         case 'o':
-        case 'O':
           if (markIn !== null) {
-            if (!store.addRegion(markIn, t)) setNotice('No room for a region there (overlaps another region or is too short).')
+            if (!store.addRegion(markIn, now)) setNotice(() => () => t('notice.noRoom'))
             setMarkIn(null)
           }
           break
@@ -205,7 +230,6 @@ export default function App() {
           if (sel) playRegion(sel)
           break
         case 'l':
-        case 'L':
           if (player.isLooping()) player.pause()
           else if (sel) playRegion(sel, true)
           break
@@ -220,11 +244,9 @@ export default function App() {
           if (sel) store.nudge(sel.id, e.altKey ? 'end' : 'start', e.key === 'ArrowLeft' ? -step : step)
           break
         case 's':
-        case 'S':
-          if (sel && !store.split(sel.id, t)) setNotice('Put the playhead inside the selected region to split it.')
+          if (sel && !store.split(sel.id, now)) setNotice(() => () => t('notice.splitHint'))
           break
         case 'm':
-        case 'M':
           if (sel) store.mergeWithNext(sel.id)
           break
         case 'Delete':
@@ -265,7 +287,7 @@ export default function App() {
       dirty = false
       // A recording without regions keeps no saved project.
       const done = p.regions.length ? saveProject(p) : deleteSavedProject(savedProjectKey(p.audio))
-      done.then(() => setSavedAt(new Date())).catch(() => setNotice('Autosave failed: the browser refused to store data.'))
+      done.then(() => setSavedAt(new Date())).catch(() => setNotice(() => () => t('notice.autosaveFailed')))
     }
     flushRef.current = flush
     let last = store.getState()
@@ -307,16 +329,16 @@ export default function App() {
         // Remember it; it is restored when the matching audio is opened.
         await saveProject(p)
         setSaved(p)
-        setNotice(`Project loaded. Now open its audio file: ${p.audio.name}`)
+        setNotice(() => () => t('notice.projectLoaded', { name: p.audio.name }))
         return
       }
-      if (current.name !== p.audio.name && !confirm(`This project was made for ${p.audio.name}, not ${current.name}. Load it anyway?`)) {
+      if (current.name !== p.audio.name && !confirm(t('confirm.projectOtherAudio', { expected: p.audio.name, actual: current.name }))) {
         return
       }
-      if (store.getState().regions.length && !confirm('Replace the current regions with the project file?')) return
+      if (store.getState().regions.length && !confirm(t('confirm.replaceRegions'))) return
       store.loadProject({ ...p, audio: current })
     } catch (e) {
-      setError(`${file.name}: ${e instanceof SyntaxError ? 'not a JSON file' : (e as Error).message}`)
+      setError(() => withFile(file.name, e))
     }
   }
 
@@ -327,9 +349,13 @@ export default function App() {
       const { added, skipped } = store.addRegions(
         labels.map((l) => ({ start: l.start, end: l.end, values: key && l.label ? { [key]: l.label } : {} })),
       )
-      setNotice(`Imported ${added} regions${skipped ? `, skipped ${skipped} (overlapping or too short)` : ''}.`)
+      setNotice(() => () =>
+        [t('notice.regionsAdded', { count: added }), skipped ? t('notice.regionsSkipped', { count: skipped }) : '']
+          .filter(Boolean)
+          .join(' '),
+      )
     } catch (e) {
-      setError(`${file.name}: ${(e as Error).message}`)
+      setError(() => withFile(file.name, e))
     }
   }
 
@@ -364,43 +390,48 @@ export default function App() {
         <h1>Lang Train Editor</h1>
         {audio && (
           <span className="file muted">
-            {audio.name} · {formatTime(audio.duration)} · {regionCount} regions
-            {savedAt && ` · saved ${savedAt.toLocaleTimeString('en-GB')}`}
+            {t('header.fileInfo', {
+              name: audio.name,
+              duration: formatTime(audio.duration),
+              regions: t('count.regions', { count: regionCount }),
+            })}
+            {savedAt && ` · ${t('header.saved', { time: i18n.time(savedAt) })}`}
           </span>
         )}
         <div className="spacer" />
         <button onClick={() => fileInput.current?.click()} disabled={!!busy}>
-          Open audio
+          {t('header.openAudio')}
         </button>
         <button onClick={() => setDetecting((v) => !v)} disabled={!handle} className={detecting ? 'active' : ''}>
-          Detect pauses
+          {t('header.detect')}
         </button>
-        <button onClick={() => setDialog('fields')}>Fields</button>
+        <button onClick={() => setDialog('fields')}>{t('header.fields')}</button>
         <details className="menu">
-          <summary>Project</summary>
+          <summary>{t('header.project')}</summary>
           <div className="menu-items" onClick={(e) => ((e.currentTarget.parentElement as HTMLDetailsElement).open = false)}>
-            <button onClick={() => setDialog('open-pack')}>Open pack for editing…</button>
+            <button onClick={() => setDialog('open-pack')}>{t('menu.openPack')}</button>
             <hr />
             <button onClick={saveProjectFile} disabled={!audio}>
-              Save project file…
+              {t('menu.saveProject')}
             </button>
-            <button onClick={() => projectInput.current?.click()}>Open project file…</button>
+            <button onClick={() => projectInput.current?.click()}>{t('menu.openProject')}</button>
             <hr />
-            <button onClick={() => setDialog('saved')}>Saved projects…</button>
+            <button onClick={() => setDialog('saved')}>{t('menu.saved')}</button>
             <hr />
             <button onClick={() => labelsInput.current?.click()} disabled={!buffer}>
-              Import Audacity labels…
+              {t('menu.importLabels')}
             </button>
             <button onClick={exportLabels} disabled={!regionCount}>
-              Export Audacity labels…
+              {t('menu.exportLabels')}
             </button>
           </div>
         </details>
         <button className="primary" onClick={() => setDialog('export')} disabled={!buffer || !regionCount}>
-          Export
+          {t('header.export')}
         </button>
+        <LanguageSelect i18n={i18n} label={t('common.language')} className="lang" />
         <a href="../" className="small">
-          Player
+          {t('header.player')}
         </a>
         <input
           ref={projectInput}
@@ -437,35 +468,35 @@ export default function App() {
         />
       </header>
 
-      {busy && <p className="muted">{busy}</p>}
-      {error && <p className="error">{error}</p>}
+      {busy && <p className="muted">{busy()}</p>}
+      {error && <p className="error">{error()}</p>}
       {notice && (
         <p className="notice">
-          {notice}{' '}
+          {notice()}{' '}
           <button className="link" onClick={() => setNotice(null)}>
-            dismiss
+            {t('common.dismiss')}
           </button>
         </p>
       )}
 
       {!buffer && !busy && (
         <main className="start">
-          <p>
-            Open an MP3 or WAV recording (or drop it here), mark phrases as regions on the waveform, fill in their texts
-            and export a pack for the player.
-          </p>
+          <p>{t('start.intro')}</p>
           <div className="start-actions">
             <button className="primary" onClick={() => fileInput.current?.click()}>
-              Open audio
+              {t('header.openAudio')}
             </button>
-            <button onClick={() => setDialog('open-pack')}>Open pack for editing</button>
+            <button onClick={() => setDialog('open-pack')}>{t('start.openPack')}</button>
           </div>
           {saved && (
             <p className="last-project">
-              Last project: <strong>{saved.audio.name}</strong>, {saved.regions.length} regions
-              {saved.savedAt && `, saved ${new Date(saved.savedAt).toLocaleString('en-GB')}`}. Open the same file to continue.{' '}
+              {t('start.lastProject', {
+                name: saved.audio.name,
+                regions: t('count.regions', { count: saved.regions.length }),
+                time: saved.savedAt ? i18n.dateTime(saved.savedAt) : '—',
+              })}{' '}
               <button className="link" onClick={() => setDialog('saved')}>
-                Manage saved projects
+                {t('start.manageSaved')}
               </button>
             </p>
           )}
@@ -475,42 +506,47 @@ export default function App() {
       {buffer && (
         <main className="editor">
           <div className="transport">
-            <button className="play" onClick={() => (playing ? player?.pause() : void player?.play())} disabled={!player}>
+            <button
+              className="play"
+              onClick={() => (playing ? player?.pause() : void player?.play())}
+              disabled={!player}
+              title={t('transport.play')}
+            >
               {playing ? '⏸' : '▶'}
             </button>
             <span className="clock">
               {formatTime(player?.getCurrentTime() ?? 0)} / {formatTime(buffer.duration)}
             </span>
-            {markIn !== null && <span className="mark">IN {formatTime(markIn)} — press O to close</span>}
+            {markIn !== null && <span className="mark">{t('transport.mark', { time: formatTime(markIn) })}</span>}
             <div className="spacer" />
-            <button onClick={() => store.undo()} disabled={!store.canUndo()} title="Undo (Ctrl+Z)">
+            <button onClick={() => store.undo()} disabled={!store.canUndo()} title={t('transport.undo')}>
               ↶
             </button>
-            <button onClick={() => store.redo()} disabled={!store.canRedo()} title="Redo (Ctrl+Shift+Z)">
+            <button onClick={() => store.redo()} disabled={!store.canRedo()} title={t('transport.redo')}>
               ↷
             </button>
-            <button onClick={() => handle?.peaks.zoom.zoomOut()} title="Zoom out (−)">
+            <button onClick={() => handle?.peaks.zoom.zoomOut()} title={t('transport.zoomOut')}>
               −
             </button>
-            <button onClick={() => handle?.peaks.zoom.zoomIn()} title="Zoom in (+)">
+            <button onClick={() => handle?.peaks.zoom.zoomIn()} title={t('transport.zoomIn')}>
               +
             </button>
             <button onClick={() => setShowHelp((v) => !v)} className={showHelp ? 'active' : ''}>
-              Shortcuts
+              {t('transport.shortcuts')}
             </button>
           </div>
           {showHelp && (
             <dl className="shortcuts">
               {SHORTCUTS.map(([k, v]) => (
                 <div key={k}>
-                  <dt>{k}</dt>
-                  <dd>{v}</dd>
+                  <dt>{i18n.tryT(k) ?? k}</dt>
+                  <dd>{t(v)}</dd>
                 </div>
               ))}
             </dl>
           )}
           {detecting && handle && (
-            <DetectPanel buffer={buffer} handle={handle} onClose={() => setDetecting(false)} onDone={setNotice} />
+            <DetectPanel buffer={buffer} handle={handle} onClose={() => setDetecting(false)} onDone={(text) => setNotice(() => text)} />
           )}
           <Waveform buffer={buffer} onReady={setHandle} />
           <RegionTable onPlay={(r) => playRegion(r)} />
@@ -536,7 +572,7 @@ export default function App() {
       {dialog === 'export' && buffer && <ExportDialog buffer={buffer} onClose={() => setDialog(null)} />}
 
       <footer className="muted">
-        v{__APP_VERSION__} · {__COMMIT__} · {__BRANCH__} · {new Date(__BUILD_TIME__).toLocaleString('en-GB')}
+        v{__APP_VERSION__} · {__COMMIT__} · {__BRANCH__} · {i18n.dateTime(__BUILD_TIME__)}
       </footer>
     </div>
   )

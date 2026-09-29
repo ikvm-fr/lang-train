@@ -1,5 +1,6 @@
 import { unzipSync } from 'fflate'
 import Papa from 'papaparse'
+import { packError } from './errors'
 import { DEFAULT_FIELDS, FIELD_KEY_PATTERN, isReservedColumn } from './fields'
 import { PACK_FORMAT, PACK_VERSION, type FieldDef, type PackMeta, type Phrase, type ReadResult } from './types'
 
@@ -30,15 +31,15 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 const optString = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
 
 function parseFields(raw: unknown, warnings: string[]): FieldDef[] {
-  if (!Array.isArray(raw) || raw.length === 0) throw new Error('pack.json: `fields` must be a non-empty array')
+  if (!Array.isArray(raw) || raw.length === 0) throw packError('fieldsInvalid')
   const seen = new Set<string>()
   const roles = new Set<string>()
   return raw.map((f, i) => {
-    if (!isObject(f)) throw new Error(`pack.json: fields[${i}] is not an object`)
+    if (!isObject(f)) throw packError('fieldNotObject', { index: i })
     const key = typeof f.key === 'string' ? f.key.trim() : ''
-    if (!FIELD_KEY_PATTERN.test(key)) throw new Error(`pack.json: invalid field key "${key}"`)
-    if (isReservedColumn(key)) throw new Error(`pack.json: field key "${key}" is reserved`)
-    if (seen.has(key)) throw new Error(`pack.json: duplicate field key "${key}"`)
+    if (!FIELD_KEY_PATTERN.test(key)) throw packError('invalidFieldKey', { key })
+    if (isReservedColumn(key)) throw packError('reservedFieldKey', { key })
+    if (seen.has(key)) throw packError('duplicateFieldKey', { key })
     seen.add(key)
 
     const field: FieldDef = { key, label: optString(f.label) ?? key }
@@ -83,21 +84,21 @@ function parseSources(raw: unknown): PackMeta['sources'] {
 }
 
 function parseMeta(raw: unknown, warnings: string[]): Partial<PackMeta> & { legacy: boolean } {
-  if (!isObject(raw)) throw new Error('pack.json: not a JSON object')
+  if (!isObject(raw)) throw packError('metaNotObject')
   if (raw.format === undefined) {
     // Prototype pack.json: only id and title.
     return { legacy: true, id: optString(raw.id), title: optString(raw.title) }
   }
-  if (raw.format !== PACK_FORMAT) throw new Error(`pack.json: unknown format "${String(raw.format)}"`)
+  if (raw.format !== PACK_FORMAT) throw packError('unknownFormat', { format: String(raw.format) })
   const version = raw.version ?? 1
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
-    throw new Error('pack.json: invalid `version`')
+    throw packError('invalidVersion')
   }
   if (version > PACK_VERSION) {
-    throw new Error(`This pack uses format version ${version}; this app supports up to ${PACK_VERSION}. Please update the app.`)
+    throw packError('newerVersion', { version, supported: PACK_VERSION })
   }
   const id = optString(raw.id)
-  if (!id) throw new Error('pack.json: missing `id`')
+  if (!id) throw packError('missingId')
   return {
     ...raw,
     legacy: false,
@@ -127,7 +128,7 @@ export async function readPack(zipBytes: Uint8Array, fallbackTitle = 'Untitled')
   try {
     files = unzipSync(zipBytes)
   } catch (e) {
-    throw new Error(`Failed to unpack ZIP: ${(e as Error).message}`)
+    throw packError('unzipFailed', { detail: (e as Error).message })
   }
   const warnings: string[] = []
 
@@ -135,7 +136,7 @@ export async function readPack(zipBytes: Uint8Array, fallbackTitle = 'Untitled')
   const csvName = names
     .filter((n) => n.split('/').pop()?.toLowerCase() === 'phrases.csv')
     .sort((a, b) => a.split('/').length - b.split('/').length)[0]
-  if (!csvName) throw new Error('phrases.csv not found in the archive')
+  if (!csvName) throw packError('csvNotFound')
   const dir = csvName.includes('/') ? csvName.slice(0, csvName.lastIndexOf('/') + 1) : ''
 
   const lookup = new Map<string, string>()
@@ -149,7 +150,7 @@ export async function readPack(zipBytes: Uint8Array, fallbackTitle = 'Untitled')
     try {
       json = JSON.parse(decodeText(files[metaName]))
     } catch {
-      throw new Error('pack.json: invalid JSON')
+      throw packError('metaInvalidJson')
     }
     meta = parseMeta(json, warnings)
   }
@@ -161,7 +162,7 @@ export async function readPack(zipBytes: Uint8Array, fallbackTitle = 'Untitled')
     transformHeader: (h) => h.trim().toLowerCase(),
   })
   const columns = parsed.meta.fields ?? []
-  if (!columns.includes('file')) throw new Error('phrases.csv: missing `file` column')
+  if (!columns.includes('file')) throw packError('missingFileColumn')
 
   // Declared fields first, then undeclared CSV columns as extra fields.
   const declared: FieldDef[] = meta.legacy ? DEFAULT_FIELDS.map((f) => ({ ...f })) : [...meta.fields!]
@@ -187,7 +188,7 @@ export async function readPack(zipBytes: Uint8Array, fallbackTitle = 'Untitled')
       return
     }
     const id = row.id?.trim() || file
-    if (ids.has(id)) throw new Error(`phrases.csv: duplicate phrase id "${id}"`)
+    if (ids.has(id)) throw packError('duplicatePhraseId', { id })
     ids.add(id)
 
     const values: Record<string, string> = {}
@@ -207,9 +208,9 @@ export async function readPack(zipBytes: Uint8Array, fallbackTitle = 'Untitled')
     phrases.push(phrase)
   })
   if (missing.length) {
-    throw new Error(`Audio files not found: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}`)
+    throw packError('audioNotFound', { files: `${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}` })
   }
-  if (!phrases.length) throw new Error('phrases.csv contains no phrases')
+  if (!phrases.length) throw packError('noPhrases')
 
   const { legacy, ...rest } = meta
   const result: PackMeta = {

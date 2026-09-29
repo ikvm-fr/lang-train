@@ -1,3 +1,4 @@
+import { editorError } from '../errors'
 import { FIELD_KEY_PATTERN, isReservedColumn, type FieldDef } from '@lang-train/pack'
 import type { AudioInfo, PackOrigin, ProjectState, Region } from './store'
 
@@ -37,22 +38,22 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v)
 
 export function parseProjectFile(raw: unknown): ProjectFile {
-  if (!isObj(raw) || raw.format !== PROJECT_FORMAT) throw new Error('Not a Lang Train project file')
+  if (!isObj(raw) || raw.format !== PROJECT_FORMAT) throw editorError('notProject')
   if (typeof raw.version !== 'number' || raw.version > PROJECT_VERSION) {
-    throw new Error('This project file was made by a newer version of the editor')
+    throw editorError('projectNewer')
   }
   const audio = raw.audio
   if (!isObj(audio) || typeof audio.name !== 'string' || !num(audio.size) || !num(audio.duration)) {
-    throw new Error('Project file: invalid `audio`')
+    throw editorError('projectInvalid', { what: 'audio' })
   }
-  if (!Array.isArray(raw.fields) || !raw.fields.length) throw new Error('Project file: invalid `fields`')
+  if (!Array.isArray(raw.fields) || !raw.fields.length) throw editorError('projectInvalid', { what: 'fields' })
   const fields: FieldDef[] = raw.fields.map((f) => {
     if (!isObj(f) || typeof f.key !== 'string' || !FIELD_KEY_PATTERN.test(f.key) || isReservedColumn(f.key)) {
-      throw new Error('Project file: invalid field')
+      throw editorError('projectInvalid', { what: 'field' })
     }
     return { ...(f as unknown as FieldDef), label: typeof f.label === 'string' ? f.label : f.key }
   })
-  if (!Array.isArray(raw.regions)) throw new Error('Project file: invalid `regions`')
+  if (!Array.isArray(raw.regions)) throw editorError('projectInvalid', { what: 'regions' })
   const regions: Region[] = raw.regions
     .filter((r): r is Record<string, unknown> => isObj(r) && typeof r.id === 'string' && num(r.start) && num(r.end))
     .map((r) => ({
@@ -104,7 +105,7 @@ export function parseAudacityLabels(text: string): Label[] {
     const [a, b, ...rest] = line.split('\t')
     const start = Number(a?.replace(',', '.'))
     const end = Number(b?.replace(',', '.'))
-    if (!Number.isFinite(start) || !Number.isFinite(end)) throw new Error(`Not an Audacity label line: "${line.slice(0, 60)}"`)
+    if (!Number.isFinite(start) || !Number.isFinite(end)) throw editorError('notLabels', { line: line.slice(0, 60) })
     out.push({ start: Math.min(start, end), end: Math.max(start, end), label: rest.join('\t').trim() })
   }
   return out

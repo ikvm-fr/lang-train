@@ -1,6 +1,9 @@
+import { errorText } from '@lang-train/i18n'
 import { primaryField, readPack, type Pack } from '@lang-train/pack'
 import { useRef, useState } from 'react'
 import { appendToPack, buildPack, downloadBytes, safeFileName, updatePack, type ExportOptions } from '../export/buildPack'
+import { editorError } from '../errors'
+import { i18n, useI18n, type Text } from '../i18n'
 import { store } from '../state/store'
 import { Dialog } from './Dialog'
 
@@ -16,6 +19,7 @@ function loadPrefs(): Omit<ExportOptions, 'title'> {
 }
 
 export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose: () => void }) {
+  const { t } = useI18n()
   const project = store.getState()
   const origin = project.origin
   const [opts, setOpts] = useState<ExportOptions>(() => {
@@ -31,7 +35,7 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
   const [target, setTarget] = useState<{ pack: Pack; fileName: string } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<[number, number] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<Text | null>(null)
   const set = (patch: Partial<ExportOptions>) => setOpts((o) => ({ ...o, ...patch }))
 
   const primary = primaryField(project.fields)
@@ -48,12 +52,12 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
     try {
       const { warnings: _w, ...pack } = await readPack(new Uint8Array(await file.arrayBuffer()), file.name)
       if (mode === 'update' && pack.meta.id !== project.packId) {
-        throw new Error(`this is not the pack “${origin?.title}” this project was opened from`)
+        throw editorError('wrongPack', { title: origin?.title ?? '' })
       }
       setTarget({ pack, fileName: file.name })
     } catch (e) {
       setTarget(null)
-      setError(`${file.name}: ${(e as Error).message}`)
+      setError(() => () => t('err.withFile', { file: file.name, detail: errorText(i18n, e) }))
     }
   }
 
@@ -80,7 +84,7 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
       }
       onClose()
     } catch (e) {
-      setError((e as Error).message)
+      setError(() => () => errorText(i18n, e))
       setProgress(null)
     }
   }
@@ -88,23 +92,21 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
   const busy = progress !== null
   return (
     <Dialog
-      title="Export"
+      title={t('export.title')}
       onClose={() => !busy && onClose()}
       footer={
         <>
           <button onClick={onClose} disabled={busy}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             className="primary"
             onClick={() => void run()}
             disabled={busy || !project.regions.length || (mode !== 'new' && !target)}
           >
-            {mode === 'append'
-              ? `Append ${project.regions.length} phrases`
-              : mode === 'update'
-                ? `Update pack (${project.regions.length} phrases)`
-                : `Export ${project.regions.length} phrases`}
+            {t(mode === 'append' ? 'export.btnAppend' : mode === 'update' ? 'export.btnUpdate' : 'export.btnNew', {
+              count: project.regions.length,
+            })}
           </button>
         </>
       }
@@ -113,33 +115,36 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
         <div className="radio-row">
           {origin && (
             <label>
-              <input type="radio" checked={mode === 'update'} onChange={() => setMode('update')} disabled={busy} /> Update
-              “{origin.title}”
+              <input type="radio" checked={mode === 'update'} onChange={() => setMode('update')} disabled={busy} />{' '}
+              {t('export.modeUpdate', { title: origin.title })}
             </label>
           )}
           <label>
-            <input type="radio" checked={mode === 'new'} onChange={() => setMode('new')} disabled={busy} /> New pack
+            <input type="radio" checked={mode === 'new'} onChange={() => setMode('new')} disabled={busy} />{' '}
+            {t('export.modeNew')}
           </label>
           <label>
-            <input type="radio" checked={mode === 'append'} onChange={() => setMode('append')} disabled={busy} /> Append to an
-            existing pack
+            <input type="radio" checked={mode === 'append'} onChange={() => setMode('append')} disabled={busy} />{' '}
+            {t('export.modeAppend')}
           </label>
         </div>
         {mode !== 'new' && (
           <div className="append-target">
             <button onClick={() => fileInput.current?.click()} disabled={busy}>
-              Choose pack ZIP…
+              {t('export.choosePack')}
             </button>{' '}
             {target ? (
               <span>
-                {target.fileName}: “{target.pack.meta.title}”, {target.pack.phrases.length} phrases
+                {t('export.packInfo', {
+                  file: target.fileName,
+                  title: target.pack.meta.title,
+                  phrases: t('count.phrases', { count: target.pack.phrases.length }),
+                })}
               </span>
             ) : (
               <span className="muted">
-                {mode === 'update'
-                  ? `Choose the pack “${origin?.title}” you opened. `
-                  : ''}
-                The result downloads as a new file with the same name.
+                {mode === 'update' ? `${t('export.updateHint', { title: origin?.title ?? '' })} ` : ''}
+                {t('export.sameName')}
               </span>
             )}
             <input
@@ -157,24 +162,26 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
         )}
         {mode === 'new' && (
           <label>
-            Title
+            {t('export.packTitle')}
             <input value={opts.title} onChange={(e) => set({ title: e.target.value })} disabled={busy} />
           </label>
         )}
         {mode === 'new' && (
           <>
             <label>
-              Language being learned
-              <input placeholder="e.g. de" value={opts.target} onChange={(e) => set({ target: e.target.value })} disabled={busy} />
+              {t('export.langTarget')}
+              <input
+                placeholder={t('export.langExample', { code: 'de' })} value={opts.target} onChange={(e) => set({ target: e.target.value })} disabled={busy} />
             </label>
             <label>
-              Learner's language
-              <input placeholder="e.g. en" value={opts.native} onChange={(e) => set({ native: e.target.value })} disabled={busy} />
+              {t('export.langNative')}
+              <input
+                placeholder={t('export.langExample', { code: 'en' })} value={opts.native} onChange={(e) => set({ native: e.target.value })} disabled={busy} />
             </label>
           </>
         )}
         <label>
-          Padding around each phrase, ms
+          {t('export.padding')}
           <input
             type="number"
             min={0}
@@ -184,27 +191,30 @@ export function ExportDialog({ buffer, onClose }: { buffer: AudioBuffer; onClose
             onChange={(e) => set({ padding: Math.max(0, Math.min(500, Number(e.target.value) || 0)) / 1000 })}
             disabled={busy}
           />
+          <span className="muted small">{t('export.paddingHelp')}</span>
         </label>
         <label>
-          MP3 bitrate
+          {t('export.bitrate')}
           <select value={opts.kbps} onChange={(e) => set({ kbps: Number(e.target.value) })} disabled={busy}>
-            <option value={48}>48 kbit/s</option>
-            <option value={64}>64 kbit/s</option>
-            <option value={96}>96 kbit/s</option>
+            {[48, 64, 96].map((v) => (
+              <option key={v} value={v}>
+                {t('unit.kbps', { value: v })}
+              </option>
+            ))}
           </select>
         </label>
       </div>
       {emptyCount > 0 && (
         <p className="warning">
-          {emptyCount} of {project.regions.length} regions have an empty “{primary?.label}”. They will be exported anyway.
+          {t('export.emptyWarning', { count: emptyCount, field: primary?.label ?? '' })}
         </p>
       )}
       {busy && (
         <div className="export-progress">
-          <progress max={progress[1]} value={progress[0]} /> Encoding {progress[0]} / {progress[1]}
+          <progress max={progress[1]} value={progress[0]} /> {t('export.encoding', { done: progress[0], total: progress[1] })}
         </div>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error">{error()}</p>}
     </Dialog>
   )
 }

@@ -12,6 +12,7 @@
   "dependencies": {
     "@lang-train/pack": "*",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "@lang-train/i18n": "*"
   }
 }

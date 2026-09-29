@@ -1,3 +1,4 @@
+import { editorError } from '../errors'
 import type { EncodeRequest, EncodeResponse } from './encode.worker'
 
 // Promise-based client for the MP3 encoding worker.
@@ -13,10 +14,10 @@ export class Mp3EncoderPool {
       if (!p) return
       this.pending.delete(e.data.id)
       if (e.data.mp3) p.resolve(e.data.mp3)
-      else p.reject(new Error(e.data.error ?? 'MP3 encoding failed'))
+      else p.reject(editorError('encodeFailed', { detail: e.data.error ?? '?' }))
     }
     this.worker.onerror = (e) => {
-      const err = new Error(`MP3 encoder crashed: ${e.message}`)
+      const err = editorError('encodeFailed', { detail: e.message })
       this.pending.forEach((p) => p.reject(err))
       this.pending.clear()
     }

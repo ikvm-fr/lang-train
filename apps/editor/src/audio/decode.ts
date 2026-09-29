@@ -1,3 +1,4 @@
+import { editorError } from '../errors'
 // Decodes an audio file into a mono PCM buffer at a fixed sample rate.
 // 24 kHz mono keeps speech quality and needs ~350 MB per hour (see docs/editor.md).
 
@@ -12,7 +13,7 @@ export async function decodeFile(file: Blob): Promise<AudioBuffer> {
   try {
     decoded = await ctx.decodeAudioData(bytes)
   } catch {
-    throw new Error('This file could not be decoded as audio. Use MP3 or WAV.')
+    throw editorError('decodeFailed')
   }
   if (decoded.numberOfChannels === 1) return decoded
 

@@ -13,6 +13,7 @@ Runs entirely in the frontend (PWA), including with the screen off.
 apps/player/     the trainer (mobile PWA), served at /
 apps/editor/     the markup editor (desktop), served at /editor/
 packages/pack/   pack format: types, reader, writer (shared by both apps)
+packages/i18n/   localization runtime and shared strings
 docs/            specifications
 scripts/         demo pack generator, site assembly
 ```
@@ -37,6 +38,23 @@ npm run build          # builds both apps and assembles the site in dist/
 
 Deployment is handled by [.github/workflows/pages.yml](.github/workflows/pages.yml): every push is built and
 published to the `gh-pages` branch. GitHub Pages must be set to serve `gh-pages` / `(root)`.
+
+## Localization
+
+Both apps are available in English (source), German, Polish, Russian, French and Chinese (Simplified).
+The language follows the browser on first start, can be switched at any time without reloading
+(player: start screen and *General settings*; editor: header), and the choice is shared by both apps.
+
+- `packages/i18n`: a small runtime (`{placeholders}`, plurals via `Intl.PluralRules`, locale number/date formatting)
+  and strings shared by both apps (pack errors, default field names).
+- `apps/*/src/i18n/<lang>.ts`: app dictionaries. `en.ts` is the source of truth; every other language is typed
+  against it, so a missing or extra key fails the type check. Tests also check plural forms and placeholders.
+- Errors carry a code (`CodedError` in `packages/pack`) and are translated in the UI as `err.<code>`.
+- To add a language: add it to `LANGS`/`LANG_NAMES`/`LOCALES` in `packages/i18n/src/core.ts`, then add a
+  dictionary file next to each `en.ts` and register it in the corresponding `index.ts`.
+
+User data is never translated: pack titles, phrase texts and field names. A new editor project gets its default
+field names in the current interface language.
 
 ## Pack format
 

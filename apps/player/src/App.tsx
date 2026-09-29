@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
+import { errorText, LanguageSelect } from '@lang-train/i18n'
 import { readPack, type Pack } from '@lang-train/pack'
 import { Player, type Settings } from './engine/Player'
+import { i18n, useI18n } from './i18n'
 import { PlayerView } from './PlayerView'
 import { effectiveSettings, loadOverrides, saveUserSettings } from './storage'
 
 const docsUrl = `https://github.com/ikvm-fr/lang-train/blob/${__BRANCH__ === 'local' ? 'main' : __BRANCH__}/docs/pack-format.md`
 
 function UpdateBanner() {
+  const { t } = useI18n()
   const {
     needRefresh: [needRefresh],
     updateServiceWorker,
@@ -22,8 +25,8 @@ function UpdateBanner() {
   if (!needRefresh) return null
   return (
     <div className="banner">
-      A new version is available
-      <button onClick={() => void updateServiceWorker(true)}>Update</button>
+      {t('app.newVersion')}
+      <button onClick={() => void updateServiceWorker(true)}>{t('app.update')}</button>
     </div>
   )
 }
@@ -34,10 +37,21 @@ function createPlayer(pack: Pack, warnings: readonly string[] = []) {
   return player
 }
 
+// Messages are kept as functions so they follow a language switch.
+type Text = () => string
+
+class DemoError extends Error {
+  readonly code = 'demo'
+  constructor(readonly status: number) {
+    super(`Could not download the demo (HTTP ${status})`)
+  }
+}
+
 export default function App() {
+  const { t } = useI18n()
   const [player, setPlayer] = useState<Player | null>(null)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<Text | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const playerRef = useRef<Player | null>(null)
   playerRef.current = player
@@ -50,7 +64,7 @@ export default function App() {
       await playerRef.current?.dispose()
       setPlayer(createPlayer(pack, warnings))
     } catch (e) {
-      setError((e as Error).message)
+      setError(() => (e instanceof DemoError ? i18n.t('start.demoFailed', { status: e.status }) : errorText(i18n, e)))
     } finally {
       setBusy(false)
     }
@@ -60,7 +74,7 @@ export default function App() {
     const url = `${import.meta.env.BASE_URL}demo/demo.zip`
     void open(
       fetch(url).then(async (r) => {
-        if (!r.ok) throw new Error(`Failed to download the demo: HTTP ${r.status}`)
+        if (!r.ok) throw new DemoError(r.status)
         return new Uint8Array(await r.arrayBuffer())
       }),
       'demo.zip',
@@ -98,28 +112,32 @@ export default function App() {
         <h1>Lang Train</h1>
         {player && (
           <button className="ghost" onClick={() => void close()}>
-            Close pack
+            {t('app.closePack')}
           </button>
         )}
       </header>
 
       {!player && (
         <main className="start">
-          <p>Open a ZIP pack with phrases or try the demo.</p>
+          <p>{t('start.intro')}</p>
           <button className="primary" disabled={busy} onClick={() => fileInput.current?.click()}>
-            Open ZIP
+            {t('start.openZip')}
           </button>
           <button disabled={busy} onClick={openDemo}>
-            Demo pack (German)
+            {t('start.demo')}
           </button>
           <input ref={fileInput} type="file" accept=".zip,application/zip" hidden onChange={onFile} />
-          {busy && <p className="muted">Loading…</p>}
-          {error && <p className="error">{error}</p>}
+          {busy && <p className="muted">{t('common.loading')}</p>}
+          {error && <p className="error">{error()}</p>}
+          <label className="select">
+            {t('common.language')}
+            <LanguageSelect i18n={i18n} label={t('common.language')} />
+          </label>
           <p className="muted small">
-            Make your own pack in the <a href={`${import.meta.env.BASE_URL}editor/`}>editor</a> (desktop).
+            {t('start.editorHint')} <a href={`${import.meta.env.BASE_URL}editor/`}>{t('start.openEditor')}</a>
           </p>
           <p className="muted small">
-            Pack format: <a href={docsUrl}>docs/pack-format.md</a>
+            {t('start.formatDocs')} <a href={docsUrl}>docs/pack-format.md</a>
           </p>
         </main>
       )}
@@ -127,7 +145,7 @@ export default function App() {
       {player && <PlayerView key={player.instance} player={player} onKeepAlive={changeKeepAlive} />}
 
       <footer className="muted">
-        v{__APP_VERSION__} · {__COMMIT__} · {__BRANCH__} · {new Date(__BUILD_TIME__).toLocaleString('en-GB')}
+        v{__APP_VERSION__} · {__COMMIT__} · {__BRANCH__} · {i18n.dateTime(__BUILD_TIME__)}
       </footer>
     </div>
   )

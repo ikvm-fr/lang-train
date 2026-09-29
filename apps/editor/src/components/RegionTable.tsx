@@ -1,9 +1,11 @@
 import { primaryField } from '@lang-train/pack'
 import { useEffect, useRef } from 'react'
 import { formatTime } from '../format'
+import { useI18n } from '../i18n'
 import { store, useProject, type Region } from '../state/store'
 
 export function RegionTable({ onPlay }: { onPlay: (r: Region) => void }) {
+  const { t, number } = useI18n()
   const regions = useProject((s) => s.regions)
   const fields = useProject((s) => s.fields)
   const selectedId = useProject((s) => s.selectedId)
@@ -16,9 +18,7 @@ export function RegionTable({ onPlay }: { onPlay: (r: Region) => void }) {
 
   if (!regions.length) {
     return (
-      <p className="muted empty">
-        No regions yet. Drag across the waveform to create one, or press <kbd>I</kbd> and <kbd>O</kbd> while listening.
-      </p>
+      <p className="muted empty">{t('table.empty')}</p>
     )
   }
 
@@ -27,7 +27,7 @@ export function RegionTable({ onPlay }: { onPlay: (r: Region) => void }) {
       <thead>
         <tr>
           <th className="num">#</th>
-          <th className="time">Time</th>
+          <th className="time">{t('table.time')}</th>
           {fields.map((f) => (
             <th key={f.key}>{f.label}</th>
           ))}
@@ -42,7 +42,7 @@ export function RegionTable({ onPlay }: { onPlay: (r: Region) => void }) {
           >
             <td
               className="num clickable"
-              title="Play"
+              title={t('table.play')}
               onClick={() => {
                 store.select(r.id)
                 onPlay(r)
@@ -52,7 +52,7 @@ export function RegionTable({ onPlay }: { onPlay: (r: Region) => void }) {
             </td>
             <td
               className="time clickable"
-              title="Play"
+              title={t('table.play')}
               onClick={() => {
                 store.select(r.id)
                 onPlay(r)
@@ -60,7 +60,7 @@ export function RegionTable({ onPlay }: { onPlay: (r: Region) => void }) {
             >
               {formatTime(r.start)}
               <br />
-              <span className="muted">{(r.end - r.start).toFixed(2)} s</span>
+              <span className="muted">{t('unit.seconds', { value: number(r.end - r.start, 2) })}</span>
             </td>
             {fields.map((f) => {
               const common = {
@@ -77,7 +77,7 @@ export function RegionTable({ onPlay }: { onPlay: (r: Region) => void }) {
               )
             })}
             <td className="actions">
-              <button className="icon" title="Delete region" tabIndex={-1} onClick={() => store.remove(r.id)}>
+              <button className="icon" title={t('table.delete')} tabIndex={-1} onClick={() => store.remove(r.id)}>
                 ✕
               </button>
             </td>

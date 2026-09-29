@@ -16,6 +16,7 @@
     "peaks.js": "^4.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "waveform-data": "^4.5.2"
+    "waveform-data": "^4.5.2",
+    "@lang-train/i18n": "*"
   }
 }

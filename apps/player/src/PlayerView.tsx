@@ -1,6 +1,8 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
-import { fieldDisplay, primaryField, type FieldDef } from '@lang-train/pack'
+import { DEFAULT_FIELDS, fieldDisplay, primaryField, type FieldDef } from '@lang-train/pack'
+import { LanguageSelect } from '@lang-train/i18n'
 import type { KeepAliveMode, Player, Settings } from './engine/Player'
+import { i18n, useI18n } from './i18n'
 import {
   loadDisplay,
   loadFieldVisibility,
@@ -56,14 +58,15 @@ function useWakeLock(enabled: boolean) {
 }
 
 function Stepper(props: { label: string; value: string; onDec: () => void; onInc: () => void; hint?: string }) {
+  const { t } = useI18n()
   return (
     <div className="stepper">
       <span className="label">{props.label}</span>
-      <button onClick={props.onDec} aria-label="decrease">
+      <button onClick={props.onDec} aria-label={t('aria.decrease')}>
         −
       </button>
       <span className="value">{props.value}</span>
-      <button onClick={props.onInc} aria-label="increase">
+      <button onClick={props.onInc} aria-label={t('aria.increase')}>
         +
       </button>
       {props.hint && <span className="hint">{props.hint}</span>}
@@ -73,7 +76,14 @@ function Stepper(props: { label: string; value: string; onDec: () => void; onInc
 
 const round = (x: number) => Math.round(x * 10) / 10
 
+// Default field names (still English, as in prototype and demo packs) are shown in the UI language.
+function fieldLabel(f: FieldDef): string {
+  const isDefault = DEFAULT_FIELDS.some((d) => d.key === f.key && d.label === f.label)
+  return (isDefault && i18n.tryT(`field.${f.key}`)) || f.label
+}
+
 export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAlive: (m: KeepAliveMode) => void }) {
+  const { t, number } = useI18n()
   usePlayerTick(player)
   const [display, setDisplay] = useState<Display>(loadDisplay)
   const [visibility, setVisibility] = useState(() => loadFieldVisibility(player.pack.meta.id))
@@ -97,7 +107,9 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
   const baseRepeats = ov.repeats ?? phrase.repeats ?? settings.repeats
   const pauseExtra = ov.pauseExtra ?? phrase.pause ?? settings.pauseExtra
   const bonus = player.bonusFor(snap.seg)
-  const hint = (own: unknown, fromPack: unknown) => (own != null ? 'custom' : fromPack != null ? 'pack' : undefined)
+  const hint = (own: unknown, fromPack: unknown) =>
+    own != null ? t('hint.custom') : fromPack != null ? t('hint.pack') : undefined
+  const seconds = (v: number) => t('unit.seconds', { value: number(v, 1) })
 
   useEffect(() => {
     listRef.current?.querySelector('.active')?.scrollIntoView({ block: 'nearest' })
@@ -124,16 +136,16 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
 
   const phaseLabel =
     snap.status === 'idle'
-      ? 'Press ▶'
+      ? t('phase.press')
       : snap.status === 'paused'
-        ? 'Paused'
+        ? t('phase.paused')
         : snap.status === 'ended'
-          ? 'Finished'
+          ? t('phase.finished')
           : snap.phase === 'speaking'
-            ? 'Listen'
+            ? t('phase.listen')
             : snap.phase === 'pause'
-              ? `Repeat · ${snap.phaseRemaining.toFixed(1)} s`
-              : 'Getting ready…'
+              ? t('phase.repeat', { seconds: number(snap.phaseRemaining, 1) })
+              : t('phase.ready')
 
   return (
     <main className="player">
@@ -144,9 +156,7 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
           <span>
             {snap.seg + 1} / {phrases.length}
           </span>
-          <span>
-            repeat {Math.min(snap.rep + 1, snap.totalRepeats)} / {snap.totalRepeats}
-          </span>
+          <span>{t('card.repeatOf', { n: Math.min(snap.rep + 1, snap.totalRepeats), total: snap.totalRepeats })}</span>
         </div>
         <div className="phase">{phaseLabel}</div>
         <div className="progress">
@@ -163,7 +173,7 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
               className={`field${f.role ? ` role-${f.role}` : ''}${f.multiline ? ' multiline' : ''}`}
               lang={f.lang}
               dir={f.dir}
-              title={f.label}
+              title={fieldLabel(f)}
             >
               {phrase.values[f.key]}
             </p>
@@ -171,93 +181,97 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
       </section>
 
       <div className="controls">
-        <button onClick={() => player.prev()} aria-label="previous">
+        <button onClick={() => player.prev()} aria-label={t('aria.previous')}>
           ⏮
         </button>
-        <button className="primary big" onClick={() => player.toggle()} aria-label="play/pause">
+        <button className="primary big" onClick={() => player.toggle()} aria-label={t('aria.playPause')}>
           {snap.status === 'playing' ? '⏸' : '▶'}
         </button>
-        <button onClick={() => player.next()} aria-label="next">
+        <button onClick={() => player.next()} aria-label={t('aria.next')}>
           ⏭
         </button>
       </div>
 
       <div className="quick">
-        <button onClick={() => player.replayNow()}>↻ Again now</button>
-        <button onClick={() => player.addRepeats(1)}>+1 repeat</button>
+        <button onClick={() => player.replayNow()}>{t('quick.again')}</button>
+        <button onClick={() => player.addRepeats(1)}>{t('quick.plusOne')}</button>
         <button onClick={() => player.addRepeats(3)}>+3</button>
       </div>
 
       <section className="panel">
-        <h2>This phrase</h2>
+        <h2>{t('phrase.title')}</h2>
         <Stepper
-          label="Repeats"
+          label={t('phrase.repeats')}
           value={String(baseRepeats)}
-          hint={bonus ? `+${bonus} now` : hint(ov.repeats, phrase.repeats)}
+          hint={bonus ? t('hint.now', { n: bonus }) : hint(ov.repeats, phrase.repeats)}
           onDec={() => setOverride({ repeats: Math.max(1, baseRepeats - 1) })}
           onInc={() => setOverride({ repeats: Math.min(20, baseRepeats + 1) })}
         />
         <Stepper
-          label="Extra pause"
-          value={`${pauseExtra.toFixed(1)} s`}
+          label={t('phrase.extraPause')}
+          value={seconds(pauseExtra)}
           hint={hint(ov.pauseExtra, phrase.pause)}
           onDec={() => setOverride({ pauseExtra: Math.max(0, round(pauseExtra - 0.5)) })}
           onInc={() => setOverride({ pauseExtra: Math.min(30, round(pauseExtra + 0.5)) })}
         />
         {(ov.repeats != null || ov.pauseExtra != null) && (
           <button className="ghost" onClick={() => setOverride({ repeats: undefined, pauseExtra: undefined })}>
-            Reset my changes
+            {t('phrase.reset')}
           </button>
         )}
       </section>
 
       <details className="panel">
-        <summary>General settings</summary>
+        <summary>{t('settings.title')}</summary>
         <Stepper
-          label="Pause × length"
-          value={settings.pauseFactor.toFixed(1)}
+          label={t('settings.pauseFactor')}
+          value={number(settings.pauseFactor, 1)}
           onDec={() => setSettings({ pauseFactor: Math.max(0, round(settings.pauseFactor - 0.1)) })}
           onInc={() => setSettings({ pauseFactor: Math.min(5, round(settings.pauseFactor + 0.1)) })}
         />
         <Stepper
-          label="+ seconds"
-          value={settings.pauseExtra.toFixed(1)}
+          label={t('settings.plusSeconds')}
+          value={number(settings.pauseExtra, 1)}
           onDec={() => setSettings({ pauseExtra: Math.max(0, round(settings.pauseExtra - 0.5)) })}
           onInc={() => setSettings({ pauseExtra: Math.min(30, round(settings.pauseExtra + 0.5)) })}
         />
         <Stepper
-          label="Repeats"
+          label={t('settings.repeats')}
           value={String(settings.repeats)}
           onDec={() => setSettings({ repeats: Math.max(1, settings.repeats - 1) })}
           onInc={() => setSettings({ repeats: Math.min(20, settings.repeats + 1) })}
         />
         <label className="check">
           <input type="checkbox" checked={settings.loop} onChange={(e) => setSettings({ loop: e.target.checked })} />
-          Loop
+          {t('settings.loop')}
         </label>
         {toggleable.map((f) => (
           <label className="check" key={f.key}>
             <input type="checkbox" checked={visibility[f.key] !== false} onChange={(e) => setShown(f.key, e.target.checked)} />
-            {f.label}
+            {fieldLabel(f)}
           </label>
         ))}
         <label className="check">
           <input type="checkbox" checked={display.wakeLock} onChange={(e) => setDisp({ wakeLock: e.target.checked })} />
-          Keep screen on
+          {t('settings.keepScreenOn')}
         </label>
         <label className="select">
-          Background mode (test)
+          {t('common.language')}
+          <LanguageSelect i18n={i18n} label={t('common.language')} />
+        </label>
+        <label className="select">
+          {t('settings.background')}
           <select value={settings.keepAlive} onChange={(e) => onKeepAlive(e.target.value as KeepAliveMode)}>
-            <option value="silent-audio">Silent track alongside</option>
-            <option value="stream">Sound via &lt;audio&gt; stream</option>
-            <option value="none">No keep-alive</option>
+            <option value="silent-audio">{t('settings.bgSilent')}</option>
+            <option value="stream">{t('settings.bgStream')}</option>
+            <option value="none">{t('settings.bgNone')}</option>
           </select>
         </label>
-        <p className="muted small">Changing the background mode stops playback.</p>
+        <p className="muted small">{t('settings.bgNote')}</p>
       </details>
 
       <details className="panel">
-        <summary>Phrases</summary>
+        <summary>{t('phrases.title')}</summary>
         <ol className="list" ref={listRef}>
           {phrases.map((p, i) => (
             <li key={p.id} className={i === snap.seg ? 'active' : ''} onClick={() => player.jumpTo(i)}>
@@ -273,6 +287,7 @@ export function PlayerView({ player, onKeepAlive }: { player: Player; onKeepAliv
 }
 
 function LogPanel({ player }: { player: Player }) {
+  const { t } = useI18n()
   const [, force] = useReducer((x: number) => x + 1, 0)
   const [open, setOpen] = useState(false)
   useEffect(() => (open ? player.subscribeLog(force) : undefined), [player, open])
@@ -282,12 +297,12 @@ function LogPanel({ player }: { player: Player }) {
 
   return (
     <details className="panel" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
-      <summary>Log (background debugging)</summary>
+      <summary>{t('log.title')}</summary>
       <button
         className="ghost"
         onClick={() => void navigator.clipboard?.writeText(entries.map(fmt).join('\n')).catch(() => {})}
       >
-        Copy
+        {t('log.copy')}
       </button>
       <pre className="log">{open ? [...entries].reverse().map(fmt).join('\n') : ''}</pre>
     </details>

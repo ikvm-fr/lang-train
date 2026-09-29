@@ -224,6 +224,12 @@ footer {
   grid-template-columns: 1fr 1fr auto;
   gap: 8px;
 }
+.quick button {
+  padding: 8px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .panel {
   background: var(--card);
@@ -276,6 +282,8 @@ footer {
 }
 .select {
   justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 .select select {
   background: var(--bg);

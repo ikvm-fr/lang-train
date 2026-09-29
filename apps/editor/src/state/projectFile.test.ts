@@ -43,6 +43,8 @@ describe('project file', () => {
   it('rejects other files', () => {
     expect(() => parseProjectFile({ format: 'lang-train-pack' })).toThrow(/Not a Lang Train project/)
     expect(() => parseProjectFile({ ...valid, version: 2 })).toThrow(/newer version/)
-    expect(() => parseProjectFile({ ...valid, fields: [{ key: 'file' }] })).toThrow(/invalid field/)
+    expect(() => parseProjectFile({ ...valid, fields: [{ key: 'file' }] })).toThrow(
+      expect.objectContaining({ code: 'projectInvalid', params: { what: 'field' } }),
+    )
   })
 })

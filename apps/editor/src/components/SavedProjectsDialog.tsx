@@ -6,13 +6,15 @@ import {
   savedProjectKey,
   type SavedProjectInfo,
 } from '../state/persist'
+import { i18n, useI18n } from '../i18n'
 import { store } from '../state/store'
 import { Dialog } from './Dialog'
 
-const kb = (bytes: number) => (bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`)
+const kb = (bytes: number) => (bytes < 1024 ? `${i18n.number(bytes)} B` : `${i18n.number(Math.round(bytes / 1024))} KB`)
 
 // Lists autosaved projects in IndexedDB and deletes them.
 export function SavedProjectsDialog({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+  const { t } = useI18n()
   const [items, setItems] = useState<SavedProjectInfo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const audio = store.getState().audio
@@ -38,42 +40,41 @@ export function SavedProjectsDialog({ onClose, onChanged }: { onClose: () => voi
   }
 
   const remove = (it: SavedProjectInfo) => {
-    if (confirm(`Delete the saved project for ${it.name} (${it.regions} regions)?`)) void run(() => deleteSavedProject(it.key))
+    if (confirm(t('saved.confirmDelete', { name: it.name, regions: t('count.regions', { count: it.regions }) }))) {
+      void run(() => deleteSavedProject(it.key))
+    }
   }
   const removeAll = () => {
-    if (items && confirm(`Delete all ${items.length} saved projects from this browser?`)) void run(clearSavedProjects)
+    if (items && confirm(t('saved.confirmDeleteAll', { count: items.length }))) void run(clearSavedProjects)
   }
 
   return (
     <Dialog
-      title="Saved projects"
+      title={t('saved.title')}
       onClose={onClose}
       footer={
         <>
           <button onClick={removeAll} disabled={!items?.length} className="danger">
-            Delete all
+            {t('saved.deleteAll')}
           </button>
           <div className="spacer" />
           <button className="primary" onClick={onClose}>
-            Close
+            {t('common.close')}
           </button>
         </>
       }
     >
-      <p className="muted small">
-        Autosaved work kept in this browser (IndexedDB), one project per recording. Audio is never stored here. Export a
-        pack or a project file first if you want to keep the work.
-      </p>
-      {items === null && !error && <p className="muted">Loading…</p>}
-      {items?.length === 0 && <p>Nothing is saved.</p>}
+      <p className="muted small">{t('saved.help')}</p>
+      {items === null && !error && <p className="muted">{t('common.loading')}</p>}
+      {items?.length === 0 && <p>{t('saved.nothing')}</p>}
       {!!items?.length && (
         <table className="saved">
           <thead>
             <tr>
-              <th>Recording</th>
-              <th>Regions</th>
-              <th>Saved</th>
-              <th>Size</th>
+              <th>{t('saved.recording')}</th>
+              <th>{t('saved.regions')}</th>
+              <th>{t('saved.savedAt')}</th>
+              <th>{t('saved.size')}</th>
               <th />
             </tr>
           </thead>
@@ -82,13 +83,13 @@ export function SavedProjectsDialog({ onClose, onChanged }: { onClose: () => voi
               <tr key={it.key}>
                 <td>
                   {it.name}
-                  {it.key === currentKey && <span className="muted"> (open now)</span>}
+                  {it.key === currentKey && <span className="muted"> {t('saved.openNow')}</span>}
                 </td>
                 <td>{it.regions}</td>
-                <td>{it.savedAt ? new Date(it.savedAt).toLocaleString('en-GB') : '—'}</td>
+                <td>{it.savedAt ? i18n.dateTime(it.savedAt) : '—'}</td>
                 <td>{kb(it.bytes)}</td>
                 <td>
-                  <button className="icon" title="Delete" onClick={() => remove(it)}>
+                  <button className="icon" title={t('saved.delete')} onClick={() => remove(it)}>
                     ✕
                   </button>
                 </td>
@@ -98,7 +99,7 @@ export function SavedProjectsDialog({ onClose, onChanged }: { onClose: () => voi
         </table>
       )}
       {currentKey && items?.some((it) => it.key === currentKey) && (
-        <p className="muted small">The project that is open now is saved again as soon as you change something.</p>
+        <p className="muted small">{t('saved.reSaved')}</p>
       )}
       {error && <p className="error">{error}</p>}
     </Dialog>

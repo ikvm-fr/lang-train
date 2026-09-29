@@ -1,5 +1,6 @@
 import { mergeFields, PACK_FORMAT, PACK_VERSION, writePack, type Pack, type Phrase } from '@lang-train/pack'
 import { Mp3EncoderPool } from '../audio/encode'
+import { editorError } from '../errors'
 import { isPlaced } from '../state/fromPack'
 import type { ProjectState } from '../state/store'
 
@@ -43,7 +44,7 @@ async function encodeRegions(
   onProgress: (done: number, total: number) => void,
 ): Promise<Phrase[]> {
   const { regions, fields } = project
-  if (!regions.length) throw new Error('There are no regions to export')
+  if (!regions.length) throw editorError('noRegions')
   const encoder = new Mp3EncoderPool()
   try {
     const phrases: Phrase[] = []
@@ -194,7 +195,7 @@ export async function updatePack(
   onProgress: (done: number, total: number) => void,
 ): Promise<Uint8Array> {
   const sourceId = project.origin?.sourceId
-  if (!sourceId) throw new Error('This project was not opened from a pack')
+  if (!sourceId) throw editorError('notFromPack')
   const replaced = (p: Phrase) => p.source === sourceId && isPlaced(p)
   const kept = existing.phrases.filter((p) => !replaced(p))
   const firstReplaced = existing.phrases.findIndex(replaced)

@@ -1,5 +1,6 @@
 import { FIELD_KEY_PATTERN, isReservedColumn, type FieldDef, type FieldDisplay, type FieldRole } from '@lang-train/pack'
 import { useState } from 'react'
+import { useI18n } from '../i18n'
 import { store } from '../state/store'
 import { Dialog } from './Dialog'
 
@@ -19,6 +20,7 @@ function keyFromLabel(label: string, taken: Set<string>): string {
 }
 
 export function FieldsDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n()
   const [fields, setFields] = useState<FieldDef[]>(() => store.getState().fields.map((f) => ({ ...f })))
   const [newLabel, setNewLabel] = useState('')
 
@@ -45,7 +47,7 @@ export function FieldsDialog({ onClose }: { onClose: () => void }) {
   const remove = (i: number) => {
     const key = fields[i].key
     const used = store.getState().regions.some((r) => r.values[key]?.trim())
-    if (used && !confirm(`Field "${fields[i].label}" has text in some regions. Remove it anyway?`)) return
+    if (used && !confirm(t('fields.confirmRemove', { label: fields[i].label }))) return
     setFields((fs) => fs.filter((_, j) => j !== i))
   }
 
@@ -58,20 +60,20 @@ export function FieldsDialog({ onClose }: { onClose: () => void }) {
   }
 
   const save = () => {
-    if (!fields.length) return alert('Keep at least one field.')
+    if (!fields.length) return alert(t('fields.keepOne'))
     store.setFields(fields.map((f) => ({ ...f, label: f.label.trim() || f.key })))
     onClose()
   }
 
   return (
     <Dialog
-      title="Fields"
+      title={t('fields.title')}
       onClose={onClose}
       footer={
         <>
-          <button onClick={onClose}>Cancel</button>
+          <button onClick={onClose}>{t('common.cancel')}</button>
           <button className="primary" onClick={save}>
-            Save
+            {t('fields.save')}
           </button>
         </>
       }
@@ -79,11 +81,11 @@ export function FieldsDialog({ onClose }: { onClose: () => void }) {
       <table className="fields">
         <thead>
           <tr>
-            <th>Label</th>
-            <th>Key</th>
-            <th>Role</th>
-            <th>Player</th>
-            <th>Multiline</th>
+            <th>{t('fields.label')}</th>
+            <th>{t('fields.key')}</th>
+            <th>{t('fields.role')}</th>
+            <th>{t('fields.player')}</th>
+            <th>{t('fields.multiline')}</th>
             <th />
           </tr>
         </thead>
@@ -91,7 +93,7 @@ export function FieldsDialog({ onClose }: { onClose: () => void }) {
           {fields.map((f, i) => (
             <tr key={f.key}>
               <td>
-                <input value={f.label} onChange={(e) => update(i, { label: e.target.value })} aria-label="Label" />
+                <input value={f.label} onChange={(e) => update(i, { label: e.target.value })} aria-label={t('fields.label')} />
               </td>
               <td className="muted">
                 <code>{f.key}</code>
@@ -99,8 +101,8 @@ export function FieldsDialog({ onClose }: { onClose: () => void }) {
               <td>
                 <select value={f.role ?? ''} onChange={(e) => setRole(i, e.target.value as FieldRole | '')}>
                   <option value="">—</option>
-                  <option value="primary">Primary</option>
-                  <option value="translation">Translation</option>
+                  <option value="primary">{t('fields.rolePrimary')}</option>
+                  <option value="translation">{t('fields.roleTranslation')}</option>
                 </select>
               </td>
               <td>
@@ -109,22 +111,22 @@ export function FieldsDialog({ onClose }: { onClose: () => void }) {
                   disabled={f.role === 'primary'}
                   onChange={(e) => update(i, { display: e.target.value as FieldDisplay })}
                 >
-                  <option value="toggle">Shown, can hide</option>
-                  <option value="always">Always shown</option>
-                  <option value="hidden">Hidden</option>
+                  <option value="toggle">{t('fields.showToggle')}</option>
+                  <option value="always">{t('fields.showAlways')}</option>
+                  <option value="hidden">{t('fields.showHidden')}</option>
                 </select>
               </td>
               <td>
                 <input type="checkbox" checked={!!f.multiline} onChange={(e) => update(i, { multiline: e.target.checked || undefined })} />
               </td>
               <td className="row-actions">
-                <button className="icon" title="Move up" onClick={() => move(i, -1)} disabled={i === 0}>
+                <button className="icon" title={t('fields.moveUp')} onClick={() => move(i, -1)} disabled={i === 0}>
                   ↑
                 </button>
-                <button className="icon" title="Move down" onClick={() => move(i, 1)} disabled={i === fields.length - 1}>
+                <button className="icon" title={t('fields.moveDown')} onClick={() => move(i, 1)} disabled={i === fields.length - 1}>
                   ↓
                 </button>
-                <button className="icon" title="Remove" onClick={() => remove(i)}>
+                <button className="icon" title={t('fields.remove')} onClick={() => remove(i)}>
                   ✕
                 </button>
               </td>
@@ -134,19 +136,16 @@ export function FieldsDialog({ onClose }: { onClose: () => void }) {
       </table>
       <div className="add-field">
         <input
-          placeholder="New field label, e.g. Word by word"
+          placeholder={t('fields.newPlaceholder')}
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
         />
         <button onClick={add} disabled={!newLabel.trim()}>
-          Add field
+          {t('fields.add')}
         </button>
       </div>
-      <p className="muted small">
-        The primary field is the main phrase text. The translation field is shown under it in the phone notification.
-        Your field setup is remembered for new projects.
-      </p>
+      <p className="muted small">{t('fields.help')}</p>
     </Dialog>
   )
 }

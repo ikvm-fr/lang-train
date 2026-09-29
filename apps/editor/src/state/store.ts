@@ -1,5 +1,6 @@
 import { DEFAULT_FIELDS, type FieldDef } from '@lang-train/pack'
 import { useSyncExternalStore } from 'react'
+import { i18n } from '../i18n'
 import type { ProjectFile } from './projectFile'
 
 // Project state. The store is the source of truth; the waveform mirrors it.
@@ -50,7 +51,8 @@ function loadLastFields(): FieldDef[] {
   } catch {
     /* storage unavailable */
   }
-  return DEFAULT_FIELDS.map((f) => ({ ...f }))
+  // Default labels in the interface language; after that they are ordinary data.
+  return DEFAULT_FIELDS.map((f) => ({ ...f, label: i18n.tryT(`field.${f.key}`) ?? f.label }))
 }
 
 const sortRegions = (rs: Region[]) => [...rs].sort((a, b) => a.start - b.start)
