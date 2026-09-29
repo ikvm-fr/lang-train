@@ -5,12 +5,13 @@ import { DetectPanel } from './components/DetectPanel'
 import { ExportDialog } from './components/ExportDialog'
 import { FieldsDialog } from './components/FieldsDialog'
 import { OpenPackDialog, type PackToOpen } from './components/OpenPackDialog'
+import { SavedProjectsDialog } from './components/SavedProjectsDialog'
 import { RegionTable } from './components/RegionTable'
 import { Waveform, type WaveformHandle } from './components/Waveform'
 import { formatTime } from './format'
 import { downloadBytes } from './export/buildPack'
 import { projectFromPack } from './state/fromPack'
-import { loadSavedProject, saveProject } from './state/persist'
+import { deleteSavedProject, loadSavedProject, savedProjectKey, saveProject } from './state/persist'
 import { formatAudacityLabels, parseAudacityLabels, parseProjectFile, toProjectFile, type ProjectFile } from './state/projectFile'
 import { store, useProject, type Region } from './state/store'
 
@@ -50,22 +51,22 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [dialog, setDialog] = useState<'fields' | 'export' | 'open-pack' | null>(null)
+  const [dialog, setDialog] = useState<'fields' | 'export' | 'open-pack' | 'saved' | null>(null)
   const [markIn, setMarkIn] = useState<number | null>(null)
   const [showHelp, setShowHelp] = useState(false)
   const [detecting, setDetecting] = useState(false)
   const [saved, setSaved] = useState<ProjectFile | null>(null) // last project, shown on the start screen
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const projectInput = useRef<HTMLInputElement>(null)
+  const flushRef = useRef<() => void>(() => {})
   const labelsInput = useRef<HTMLInputElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   usePlayerTick(handle)
   useProject((s) => s) // re-render on any change (undo/redo button state)
 
   const openFile = useCallback(async (file: File, fromPack?: PackToOpen) => {
-    // The current project is autosaved per recording; make sure its latest changes are stored.
-    const current = toProjectFile(store.getState())
-    if (current?.regions.length) await saveProject(current).catch(() => {})
+    // The current project is autosaved per recording; store its latest changes before switching.
+    flushRef.current()
     setBusy(`Decoding ${file.name}…`)
     setError(null)
     setNotice(null)
@@ -255,15 +256,28 @@ export default function App() {
   // Autosave to IndexedDB, 1 s after the last change and when the page is hidden.
   useEffect(() => {
     let timer = 0
+    let dirty = false // only save real changes, so deleted saves do not come back on their own
     const flush = () => {
       clearTimeout(timer)
+      if (!dirty) return
       const p = toProjectFile(store.getState())
       if (!p) return
-      saveProject(p)
-        .then(() => setSavedAt(new Date()))
-        .catch(() => setNotice('Autosave failed: the browser refused to store data.'))
+      dirty = false
+      // A recording without regions keeps no saved project.
+      const done = p.regions.length ? saveProject(p) : deleteSavedProject(savedProjectKey(p.audio))
+      done.then(() => setSavedAt(new Date())).catch(() => setNotice('Autosave failed: the browser refused to store data.'))
     }
+    flushRef.current = flush
+    let last = store.getState()
     const unsubscribe = store.subscribe(() => {
+      const next = store.getState()
+      // Selection changes alone are not worth saving.
+      if (next.regions === last.regions && next.fields === last.fields && next.audio === last.audio) {
+        last = next
+        return
+      }
+      last = next
+      dirty = true
       clearTimeout(timer)
       timer = window.setTimeout(flush, 1000)
     })
@@ -372,6 +386,8 @@ export default function App() {
             </button>
             <button onClick={() => projectInput.current?.click()}>Open project file…</button>
             <hr />
+            <button onClick={() => setDialog('saved')}>Saved projects…</button>
+            <hr />
             <button onClick={() => labelsInput.current?.click()} disabled={!buffer}>
               Import Audacity labels…
             </button>
@@ -447,7 +463,10 @@ export default function App() {
           {saved && (
             <p className="last-project">
               Last project: <strong>{saved.audio.name}</strong>, {saved.regions.length} regions
-              {saved.savedAt && `, saved ${new Date(saved.savedAt).toLocaleString('en-GB')}`}. Open the same file to continue.
+              {saved.savedAt && `, saved ${new Date(saved.savedAt).toLocaleString('en-GB')}`}. Open the same file to continue.{' '}
+              <button className="link" onClick={() => setDialog('saved')}>
+                Manage saved projects
+              </button>
             </p>
           )}
         </main>
@@ -499,6 +518,12 @@ export default function App() {
       )}
 
       {dialog === 'fields' && <FieldsDialog onClose={() => setDialog(null)} />}
+      {dialog === 'saved' && (
+        <SavedProjectsDialog
+          onClose={() => setDialog(null)}
+          onChanged={() => void loadSavedProject().then((p) => setSaved(p?.regions.length ? p : null))}
+        />
+      )}
       {dialog === 'open-pack' && (
         <OpenPackDialog
           onClose={() => setDialog(null)}

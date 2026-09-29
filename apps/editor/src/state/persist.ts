@@ -47,3 +47,46 @@ export async function saveProject(p: ProjectFile): Promise<void> {
   await tx('readwrite', (s) => s.put(p, keyOf(p.audio)))
   await tx('readwrite', (s) => s.put(keyOf(p.audio), LAST))
 }
+
+export interface SavedProjectInfo {
+  key: string
+  name: string
+  size: number
+  regions: number
+  savedAt: string
+  bytes: number // approximate size of the stored data
+}
+
+// All autosaved projects, newest first.
+export async function listSavedProjects(): Promise<SavedProjectInfo[]> {
+  const [keys, values] = await Promise.all([
+    tx<IDBValidKey[]>('readonly', (s) => s.getAllKeys()),
+    tx<unknown[]>('readonly', (s) => s.getAll()),
+  ])
+  const out: SavedProjectInfo[] = []
+  keys.forEach((key, i) => {
+    if (typeof key !== 'string' || !key.startsWith('project:')) return
+    const v = values[i] as Partial<ProjectFile> | undefined
+    out.push({
+      key,
+      name: v?.audio?.name ?? '?',
+      size: v?.audio?.size ?? 0,
+      regions: Array.isArray(v?.regions) ? v.regions.length : 0,
+      savedAt: typeof v?.savedAt === 'string' ? v.savedAt : '',
+      bytes: JSON.stringify(v ?? null).length,
+    })
+  })
+  return out.sort((a, b) => b.savedAt.localeCompare(a.savedAt))
+}
+
+export async function deleteSavedProject(key: string): Promise<void> {
+  const last = await tx<string | undefined>('readonly', (s) => s.get(LAST))
+  await tx('readwrite', (s) => s.delete(key))
+  if (last === key) await tx('readwrite', (s) => s.delete(LAST))
+}
+
+export async function clearSavedProjects(): Promise<void> {
+  await tx('readwrite', (s) => s.clear())
+}
+
+export const savedProjectKey = keyOf

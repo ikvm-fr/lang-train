@@ -176,6 +176,9 @@ If an autosave exists for the same recording, the editor asks before replacing i
   field model, pack id and the recording's name, size and duration. The header shows the time of the last save.
 - One saved project **per recording** (keyed by file name + size), so opening another file never overwrites
   earlier work. The start screen shows the most recently saved project.
+- Only real changes are saved (not selection). A recording whose regions were all deleted keeps no saved project.
+- **Project ▾ → Saved projects…** lists what is stored (recording, regions, time, size) and deletes single
+  projects or everything, so IndexedDB does not fill up. The open project is saved again on its next change.
 - The audio itself is not stored. Opening a recording that has a saved project offers to continue it;
   a different duration shows a warning.
 - **Project file**: *Project ▾ → Save / Open project file* exports or imports everything except the audio,

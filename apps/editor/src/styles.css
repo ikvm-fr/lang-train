@@ -439,3 +439,17 @@ footer {
   gap: 6px;
   padding: 2px 0;
 }
+
+button.danger {
+  color: var(--error);
+}
+.saved {
+  border-collapse: collapse;
+  width: 100%;
+}
+.saved th,
+.saved td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
