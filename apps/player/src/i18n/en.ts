@@ -1,0 +1,56 @@
+// Player strings. English is the source of truth; other languages must have the same keys.
+export const en = {
+  'app.newVersion': 'A new version is available',
+  'app.update': 'Update',
+  'app.closePack': 'Close pack',
+
+  'start.intro': 'Open a ZIP pack with phrases or try the demo.',
+  'start.openZip': 'Open ZIP',
+  'start.demo': 'Demo pack (German)',
+  'start.demoFailed': 'Could not download the demo (HTTP {status}).',
+  'start.editorHint': 'Make your own packs on a computer:',
+  'start.openEditor': 'open the editor',
+  'start.formatDocs': 'Pack format:',
+
+  'phase.press': 'Press ▶',
+  'phase.paused': 'Paused',
+  'phase.finished': 'Finished',
+  'phase.listen': 'Listen',
+  'phase.repeat': 'Repeat · {seconds} s',
+  'phase.ready': 'Getting ready…',
+  'card.repeatOf': 'repeat {n} / {total}',
+
+  'aria.previous': 'Previous phrase',
+  'aria.playPause': 'Play / pause',
+  'aria.next': 'Next phrase',
+  'aria.decrease': 'Decrease',
+  'aria.increase': 'Increase',
+
+  'quick.again': '↻ Again now',
+  'quick.plusOne': '+1 repeat',
+
+  'phrase.title': 'This phrase',
+  'phrase.repeats': 'Repeats',
+  'phrase.extraPause': 'Extra pause',
+  'phrase.reset': 'Reset my changes',
+  'hint.custom': 'custom',
+  'hint.pack': 'pack',
+  'hint.now': '+{n} now',
+  'unit.seconds': '{value} s',
+
+  'settings.title': 'General settings',
+  'settings.pauseFactor': 'Pause × length',
+  'settings.plusSeconds': '+ seconds',
+  'settings.repeats': 'Repeats',
+  'settings.loop': 'Loop',
+  'settings.keepScreenOn': 'Keep screen on',
+  'settings.background': 'Background mode (test)',
+  'settings.bgSilent': 'Silent track alongside',
+  'settings.bgStream': 'Sound via <audio> stream',
+  'settings.bgNone': 'No keep-alive',
+  'settings.bgNote': 'Changing the background mode stops playback.',
+
+  'phrases.title': 'Phrases',
+  'log.title': 'Log (background debugging)',
+  'log.copy': 'Copy',
+}

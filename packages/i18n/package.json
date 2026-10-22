@@ -1,0 +1,15 @@
+{
+  "name": "@lang-train/i18n",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  }
+}
